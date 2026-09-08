@@ -1,6 +1,6 @@
 schedule:
   daily_run_time_local: "02:00"
-  timezone: "America/New_York"   # TODO: confirm your timezone
+  timezone: "America/New_York"   # Eastern, confirmed
 
 book:
   chapter_word_count: 1500
