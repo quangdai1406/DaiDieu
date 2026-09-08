@@ -66,12 +66,29 @@ list with `python scripts/trend_research.py --catalog-only` once Drive sync is w
 your live KDP account. Schedule it for 2:00 AM in your local timezone with cron/Task
 Scheduler/a Claude Code Routine — see "Scheduling" below.
 
-## Scheduling
+## Scheduling (runs on your own machine, Eastern time)
 
-I can wire this to fire automatically every night at 2 AM and message you when the
-review package is ready — but only once `ANTHROPIC_API_KEY` and the trend-source API
-keys are actually set in `.env`; a bare cron job against this scaffold today would just
-fail. Tell me your timezone and I'll set up the trigger.
+This has to run from your machine, not a cloud sandbox — `trend_research.py` calls
+`trends.google.com` directly, which many hosted environments block at the network policy
+level. Cron on your machine:
+
+```
+crontab -e
+```
+
+Add (adjust the repo path to wherever you clone `daidieu`):
+
+```
+0 2 * * * cd /path/to/daidieu/book-pipeline && .venv/bin/python scripts/orchestrator.py >> output/cron.log 2>&1
+```
+
+Cron runs in your machine's local timezone by default — confirm with `timedatectl` (Linux)
+or Date & Time settings (Mac/Windows) that it's set to Eastern, or the run will fire at the
+wrong hour.
+
+Until `ANTHROPIC_API_KEY` is set in `.env`, the run will get through stage 1 (Google
+Trends — works now, no key needed) and then fail loudly at stage 2 (`write_book.py`)
+rather than silently producing nothing — check `output/cron.log` after the first run.
 
 ## Status
 
