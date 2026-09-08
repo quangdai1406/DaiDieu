@@ -1,0 +1,21 @@
+# Genres/niches to search for trending topics in, based on your existing catalog
+# (Investing Compass, C Corp tax deductions, Raspberry Pi AI inspection systems, etc.)
+# Edit this list to match what's actually in your "Writing Books" Drive folder.
+
+niches:
+  - name: investing_personal_finance
+    amazon_categories: ["Books > Business & Money > Investing"]
+    keywords: ["investing for beginners", "stock market cycles", "retirement planning"]
+  - name: tax_real_estate
+    amazon_categories: ["Books > Business & Money > Taxation"]
+    keywords: ["C corporation tax deductions", "real estate tax strategy", "LLC taxes"]
+  - name: diy_tech_automation
+    amazon_categories: ["Books > Computers & Technology > Hardware & DIY"]
+    keywords: ["raspberry pi projects", "AI vision inspection", "home automation build"]
+
+# Books already published — trend_research.py excludes near-duplicate topics of these.
+published_catalog: []  # populated from Drive scan; see scripts/trend_research.py --catalog-only
+
+pricing:
+  royalty_tier_sweet_spot: [2.99, 9.99]   # USD, 70% royalty band (ebook)
+  paperback_target_margin: 4.00           # USD royalty target after print cost

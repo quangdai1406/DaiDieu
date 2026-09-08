@@ -1,0 +1,12 @@
+schedule:
+  daily_run_time_local: "02:00"
+  timezone: "America/New_York"   # TODO: confirm your timezone
+
+book:
+  chapter_word_count: 1500
+  min_chapters: 8
+  max_chapters: 20
+  author_name: "Dai Tran"
+
+output_dir: "output"
+review_required_before_publish: true
