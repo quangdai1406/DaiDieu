@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"Dai Tran stores all persistent memory, project context, and people info in Google Drive under Claude Cowork/memory/ (CLAUDE.md and STORAGE_AND_SYNC_POLICY.md). Before doing anything else this session, invoke the work-memory skill to load that context, unless this task is clearly unrelated to Dai work, people, or commitments.\"}}'"
+          }
+        ]
+      }
+    ]
+  }
+}
