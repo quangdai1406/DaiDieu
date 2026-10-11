@@ -188,6 +188,7 @@ JS_IMPORT_RES = [
     re.compile(r"""\brequire\(\s*['"]([^'"]+)['"]\s*\)"""),
     re.compile(r"""\bimport\(\s*['"]([^'"]+)['"]\s*\)"""),
 ]
+JS_FROM_RE = re.compile(r"""\b(?:import|export)\s+(?:type\s+)?([^'";]*?)\s+from\s+['"]([^'"]+)['"]""", re.S)
 JS_DEF_RES = [
     ("function", re.compile(r"^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?function\*?\s+([A-Za-z_$][\w$]*)", re.M)),
     ("class", re.compile(r"^\s*(?:export\s+)?(?:default\s+)?(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)", re.M)),
@@ -229,15 +230,37 @@ def resolve_js(files, rel, spec):
     return None
 
 
+def js_clause_names(clause):
+    names = set()
+    clause = clause.strip()
+    if "*" in clause:
+        names.add("*")
+    brace = re.search(r"\{([^}]*)\}", clause)
+    if brace:
+        for part in brace.group(1).split(","):
+            part = re.sub(r"^\s*type\s+", "", part.strip())
+            if part:
+                names.add(part.split(" as ")[0].strip())
+    head = clause.split("{")[0].strip().rstrip(",").strip()
+    if head and "*" not in head:
+        names.add("default")
+    return names
+
+
 def parse_js(rel, text, files):
     clean = strip_js_comments(text)
     imports, external = set(), set()
+    import_names = defaultdict(set)
+    names_for_spec = defaultdict(set)
+    for m in JS_FROM_RE.finditer(clean):
+        names_for_spec[m.group(2)] |= js_clause_names(m.group(1))
     for rx in JS_IMPORT_RES:
         for m in rx.finditer(clean):
             spec = m.group(1)
             target = resolve_js(files, rel, spec)
             if target and target != rel:
                 imports.add(target)
+                import_names[target] |= names_for_spec.get(spec, set())
             elif not spec.startswith("."):
                 parts = spec.split("/")
                 external.add("/".join(parts[:2]) if spec.startswith("@") else parts[0])
@@ -252,7 +275,8 @@ def parse_js(rel, text, files):
             seen.add(d["name"])
             uniq.append(d)
     return {"defs": uniq, "imports": sorted(imports), "external": sorted(external),
-            "import_names": {}, "refs": set(JS_IDENT.findall(clean))}
+            "import_names": {k: sorted(v) for k, v in import_names.items()},
+            "refs": set(JS_IDENT.findall(clean))}
 
 
 # ---------------------------------------------------------------- build / load
@@ -287,9 +311,12 @@ def build(root):
     for rel, node in nodes.items():
         for d in node["defs"]:
             index[d["name"]].add(rel)
+    # Name-only edges need a distinctive name: a plain lowercase word (branches, locations)
+    # also appears in SQL strings, comments and prose, so it would create false links.
     usable = {
         n: fs for n, fs in index.items()
-        if len(n) >= 3 and n not in COMMON_NAMES and not n.startswith("__") and len(fs) <= AMBIGUOUS_LIMIT
+        if len(n) >= 4 and n not in COMMON_NAMES and not n.startswith("__")
+        and re.search(r"[A-Z_0-9]", n) and len(fs) <= AMBIGUOUS_LIMIT
     }
     for src, refs in refs_by_file.items():
         own = {d["name"] for d in nodes[src]["defs"]}
@@ -521,9 +548,12 @@ def find_cycles(files, edges):
 def cmd_symbol(gr, name, limit, as_json):
     defs = [(f, d) for f, n in gr.files.items() for d in n["defs"] if d["name"] == name or d["qual"] == name]
     users = []
+    defining = {f for f, _ in defs}
     for e in gr.graph["edges"]:
         if name in e["names"]:
             users.append((e["src"], e["dst"], e["kind"]))
+        elif "*" in e["names"] and e["dst"] in defining:
+            users.append((e["src"], e["dst"], "ref"))  # namespace or star import: may use it
     if as_json:
         print(json.dumps({"defined": [{"file": f, **d} for f, d in defs], "referenced_by": users}, indent=1))
         return
