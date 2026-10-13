@@ -22,7 +22,7 @@ pip install -r requirements-transcribe.txt   # only for local transcription (opt
 .\.venv\Scripts\python -m recorder gui
 ```
 
-Or double-click `start-recorder.bat`. Four buttons: **Record**, **Stop**, **Save**, **Transcribe**.
+Or double-click `start-recorder.bat` (processor, `base.en`; see *Desktop shortcut* below for a GPU shortcut). Four buttons: **Record**, **Stop**, **Save**, **Transcribe**.
 
 - **Record** starts a meeting recording with your default mic and speakers, with a timer and
   live level bars. Recordings are written to `recordings\` as they happen.
@@ -81,6 +81,34 @@ file can take about as long as the audio itself.
 
 If Transcribe fails with `open() got an unexpected keyword argument 'metadata_errors'`, run
 `pip install "av<19"`: the newest `av` release removed an option faster-whisper still uses.
+
+## Desktop shortcut
+
+Keep the app in one folder you will not delete (for example `C:\Users\<you>\MeetingRecorder`), then run this from the `audio-recorder` folder that contains `.venv`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\create-shortcut.ps1
+```
+
+This puts a **Meeting Recorder** shortcut with its own icon on your Desktop. It opens the window
+with no console window, using the GPU and `small.en` by default. Options:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\create-shortcut.ps1 -Device cpu
+powershell -ExecutionPolicy Bypass -File .\create-shortcut.ps1 -Model medium.en
+powershell -ExecutionPolicy Bypass -File .\create-shortcut.ps1 -Console   # keep a console window
+```
+
+- Recordings made from the window are saved in `Documents\Meeting Recorder` (change it with
+  `python -m recorder gui --out <folder>`), so updating or deleting the program folder never
+  deletes your recordings.
+- With no console window, anything the app prints goes to
+  `%LOCALAPPDATA%\Meeting Recorder\last-run.log`. If the shortcut does nothing, open that file,
+  or re-create the shortcut with `-Console` to see the messages.
+- After you re-download the app into a new folder, run the script again from the new folder:
+  it replaces the old shortcut.
+- To pin it to the taskbar, right-click the shortcut and choose **Show more options > Pin to taskbar**.
+- The window itself has no device pickers: it uses your default microphone and speakers.
 
 ## Check your setup, and use an NVIDIA GPU
 
