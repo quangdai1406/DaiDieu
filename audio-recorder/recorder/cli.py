@@ -21,6 +21,8 @@ def build_parser():
 
     sub.add_parser("devices", help="list microphones and loopback (speaker) devices")
     gui = sub.add_parser("gui", help="open the simple Record / Stop / Save / Transcribe window")
+    gui.add_argument("--out", type=Path,
+                     help="folder for new recordings (default: Documents\\Meeting Recorder)")
     add_whisper_args(gui)
 
     chk = sub.add_parser("check", help="test whether transcription works on the processor and on the GPU")
@@ -55,6 +57,10 @@ def add_whisper_args(parser):
     parser.add_argument("--compute-type", default=None,
                         help="precision; default is int8 on the processor and auto on a GPU")
     parser.add_argument("--language", default="en")
+
+
+def default_gui_out():
+    return Path.home() / "Documents" / "Meeting Recorder"
 
 
 def default_waiter(session):
@@ -178,7 +184,8 @@ def main(argv=None, *, backend=None, waiter=default_waiter, model_loader=load_mo
                   "(re-run it and tick 'tcl/tk and IDLE').")
             return 1
         return run(backend, model_name=args.model, device=args.device,
-                   compute_type=args.compute_type, language=args.language)
+                   compute_type=args.compute_type, language=args.language,
+                   out_base=args.out or default_gui_out())
 
     if args.command == "devices":
         for d in backend.list_devices():

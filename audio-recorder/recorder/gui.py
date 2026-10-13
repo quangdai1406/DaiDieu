@@ -4,6 +4,7 @@ Only drawing lives here. Every rule is in controller.py, which is tested
 without a display.
 """
 
+import sys
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -42,6 +43,12 @@ class App:
         self.root, self.controller, self.runner = root, controller, runner
         self._shown_transcript = None
         root.title("Meeting Recorder")
+        icon = Path(__file__).with_name("app.ico")
+        if sys.platform == "win32" and icon.exists():
+            try:
+                root.iconbitmap(default=str(icon))  # title bar and taskbar
+            except tk.TclError:
+                pass
         root.minsize(460, 560)
         root.protocol("WM_DELETE_WINDOW", self.close)
         root.report_callback_exception = self._unexpected_error
@@ -129,12 +136,13 @@ class App:
         messagebox.showerror("Something went wrong", f"{exc_type.__name__}: {exc}")
 
 
-def run(backend, model_name="base.en", device="cpu", compute_type=None, language="en"):
+def run(backend, model_name="base.en", device="cpu", compute_type=None, language="en",
+        out_base="recordings"):
     root = tk.Tk()
     runner = ThreadRunner()
     controller = AppController(backend, runner, ask_save_target, ask_open_file=ask_open_file,
                                model_name=model_name, device=device, compute_type=compute_type,
-                               language=language)
+                               language=language, out_base=out_base)
     App(root, controller, runner)
     root.title(f"Meeting Recorder - transcription: {model_name} on {device}")
     root.mainloop()

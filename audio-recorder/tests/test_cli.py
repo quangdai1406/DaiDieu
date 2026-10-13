@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -106,8 +107,9 @@ def test_gui_command_opens_the_window_with_the_backend(monkeypatch):
                         SimpleNamespace(run=lambda backend, **options: opened.append((backend, options)) or 0))
     backend = FakeBackend()
     assert main(["gui"], backend=backend) == 0
-    assert opened == [(backend, {"model_name": "base.en", "device": "cpu",
-                                 "compute_type": None, "language": "en"})]
+    assert opened == [(backend, {"model_name": "base.en", "device": "cpu", "compute_type": None,
+                                 "language": "en",
+                                 "out_base": Path.home() / "Documents" / "Meeting Recorder"})]
 
 
 def test_gui_command_explains_a_missing_tkinter(monkeypatch, capsys):
@@ -175,8 +177,18 @@ def test_gui_command_passes_the_speech_settings(monkeypatch):
                         SimpleNamespace(run=lambda backend, **options: opened.append(options) or 0))
     main(["gui", "--device", "cuda", "--model", "small.en", "--compute-type", "float16"],
          backend=FakeBackend())
-    assert opened == [{"model_name": "small.en", "device": "cuda",
-                       "compute_type": "float16", "language": "en"}]
+    assert opened == [{"model_name": "small.en", "device": "cuda", "compute_type": "float16",
+                       "language": "en", "out_base": Path.home() / "Documents" / "Meeting Recorder"}]
+
+
+def test_gui_command_takes_a_custom_recordings_folder(monkeypatch, tmp_path):
+    import sys
+
+    opened = []
+    monkeypatch.setitem(sys.modules, "recorder.gui",
+                        SimpleNamespace(run=lambda backend, **options: opened.append(options) or 0))
+    main(["gui", "--out", str(tmp_path / "my recordings")], backend=FakeBackend())
+    assert opened[0]["out_base"] == tmp_path / "my recordings"
 
 
 def test_check_reports_cpu_and_gpu_separately(capsys):
