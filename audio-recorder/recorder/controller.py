@@ -15,7 +15,8 @@ from pathlib import Path
 
 from .mixer import export_mp3
 from .session import RecordingSession, unique_dir
-from .transcribe import SPEAKERS, load_model, write_transcripts
+from .transcribe import SPEAKERS, explain_error, load_model, write_transcripts
+from .transcribe import transcribe_file as transcribe_audio_file
 
 CONSENT_NOTE = ("Recording your microphone and speakers. Tell the other participants "
                 "you are recording: many places require everyone's consent.")
@@ -30,7 +31,7 @@ class State(Enum):
     TRANSCRIBING = "transcribing"
 
 
-BUTTONS = ("record", "stop", "save", "transcribe")
+BUTTONS = ("record", "stop", "save", "transcribe", "transcribe_file")
 
 
 def format_elapsed(seconds):
@@ -87,10 +88,12 @@ class ThreadRunner:
 class AppController:
     def __init__(self, backend, runner, ask_save_target, model_loader=load_model,
                  out_base="recordings", now=datetime.now, clock=time.monotonic,
-                 language="en", model_name="base.en", device="cpu", compute_type="int8"):
+                 language="en", model_name="base.en", device="cpu", compute_type=None,
+                 ask_open_file=None):
         self._backend = backend
         self._runner = runner
         self.ask_save_target = ask_save_target  # (default_name) -> (folder, want_mp3) | None
+        self.ask_open_file = ask_open_file  # () -> Path | None
         self._model_loader = model_loader
         self._out_base = Path(out_base)
         self._now = now
@@ -104,6 +107,7 @@ class AppController:
         self._started_at = 0.0
         self._elapsed = 0.0
         self._transcript = ""
+        self._progress = None  # (seconds done, total seconds or None) while transcribing
         self._message, self._kind = "Ready. Press Record to start.", "info"
 
     # ---- what the window shows -------------------------------------------------
@@ -117,18 +121,30 @@ class AppController:
             mic_level=peaks.get("mic", 0.0),
             speaker_level=peaks.get("loopback", 0.0),
             enabled={name: self._is_enabled(name) for name in BUTTONS},
-            message=self._message, message_kind=self._kind,
+            message=self._message_with_progress(), message_kind=self._kind,
             transcript=self._transcript, session_dir=self._session_dir)
+
+    def _message_with_progress(self):
+        if self._state is not State.TRANSCRIBING or not self._progress:
+            return self._message
+        done, total = self._progress
+        if total:
+            return (f"{self._message}\n{format_elapsed(done)} of {format_elapsed(total)} "
+                    f"transcribed ({int(done / total * 100)}%)")
+        return f"{self._message}\n{format_elapsed(done)} transcribed so far"
+
+    def _set_progress(self, done, total):
+        self._progress = (done, total)  # called from the worker thread; one atomic assignment
 
     def _is_enabled(self, button):
         if self._state is State.IDLE:
-            return button == "record"
+            return button in ("record", "transcribe_file")
         if self._state is State.RECORDING:
             return button == "stop"
         if self._state is State.STOPPED:
             if button == "transcribe":
                 return self._has_tracks()
-            return button in ("record", "save")
+            return button in ("record", "save", "transcribe_file")
         return False
 
     def _has_tracks(self):
@@ -222,30 +238,70 @@ class AppController:
         if self._state is not State.STOPPED or not self._has_tracks():
             return False
         self._state = State.TRANSCRIBING
+        self._progress = None
         self._say("Transcribing... The first time, the speech model is downloaded, "
                   "which can take a few minutes. Keep this window open.")
         session_dir = self._session_dir
 
         def work():
-            if self._model is None:
-                self._model = self._model_loader(*self._model_args)
-            txt, _srt = write_transcripts(self._model, session_dir, SPEAKERS, self._language)
+            txt, _srt = write_transcripts(self._load_model(), session_dir, SPEAKERS, self._language,
+                                          self._set_progress)
             return txt.read_text(encoding="utf-8")
 
         self._runner.submit(work, self._on_transcribed)
         return True
 
+    def _load_model(self):
+        if self._model is None:
+            self._model = self._model_loader(*self._model_args)
+        return self._model
+
     def _on_transcribed(self, text, error):
         self._state = State.STOPPED
+        self._progress = None
         if error is not None:
-            plain = str(error) if isinstance(error, SystemExit) else f"Transcription failed: {error}"
-            self._say(plain, "error")
+            self._say(explain_error(error), "error")
         elif not text.strip():
             self._say("No speech was found in the recording.")
         else:
             self._transcript = text
             self._say("Transcript saved as transcript.txt and transcript.srt "
                       "in the recording folder.", "ok")
+
+    def transcribe_file(self):
+        """Transcribe an audio file chosen by the user; the current recording stays as it is."""
+        if self._state not in (State.IDLE, State.STOPPED) or self.ask_open_file is None:
+            return False
+        chosen = self.ask_open_file()
+        if not chosen:
+            self._say("No file chosen.")
+            return False
+        audio, back_to = Path(chosen), self._state
+        self._state = State.TRANSCRIBING
+        self._progress = None
+        self._say(f"Transcribing {audio.name}... The first time, the speech model is downloaded. "
+                  "A long file can take about as long as the audio itself. Keep this window open.")
+
+        def work():
+            txt, _srt = transcribe_audio_file(self._load_model(), audio, self._language,
+                                              self._set_progress)
+            return txt, txt.read_text(encoding="utf-8")
+
+        self._runner.submit(work, lambda result, error: self._on_file_transcribed(back_to, result, error))
+        return True
+
+    def _on_file_transcribed(self, back_to, result, error):
+        self._state = back_to
+        self._progress = None
+        if error is not None:
+            self._say(explain_error(error), "error")
+            return
+        txt, text = result
+        if not text.strip():
+            self._say("No speech was found in that file.")
+            return
+        self._transcript = text
+        self._say(f"Transcript saved next to the file: {txt.name}", "ok")
 
     def shutdown(self):
         """Call when the window closes: never lose a recording in progress."""

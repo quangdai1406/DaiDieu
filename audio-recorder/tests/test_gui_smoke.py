@@ -90,3 +90,15 @@ def test_closing_while_recording_keeps_the_recording(window):
     session_dir = window.app.controller.snapshot().session_dir
     window.app.close()
     assert (session_dir / "mix.wav").exists()
+
+
+def test_transcribe_a_file_button(window):
+    audio = window.tmp / "memo.m4a"
+    audio.write_bytes(b"")
+    window.app.controller.ask_open_file = lambda: audio
+    window.root.update()
+    assert not disabled(window, "transcribe_file")
+    window.app.buttons["transcribe_file"].invoke()
+    assert pump(window, lambda: "hello from the test" in window.app.text.get("1.0", "end"))
+    assert (window.tmp / "memo.transcript.txt").exists()
+    assert "memo.transcript.txt" in window.app.status.cget("text")

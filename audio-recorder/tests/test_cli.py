@@ -102,10 +102,12 @@ def test_gui_command_opens_the_window_with_the_backend(monkeypatch):
     import sys
 
     opened = []
-    monkeypatch.setitem(sys.modules, "recorder.gui", SimpleNamespace(run=lambda backend: opened.append(backend) or 0))
+    monkeypatch.setitem(sys.modules, "recorder.gui",
+                        SimpleNamespace(run=lambda backend, **options: opened.append((backend, options)) or 0))
     backend = FakeBackend()
     assert main(["gui"], backend=backend) == 0
-    assert opened == [backend]
+    assert opened == [(backend, {"model_name": "base.en", "device": "cpu",
+                                 "compute_type": None, "language": "en"})]
 
 
 def test_gui_command_explains_a_missing_tkinter(monkeypatch, capsys):
@@ -114,3 +116,106 @@ def test_gui_command_explains_a_missing_tkinter(monkeypatch, capsys):
     monkeypatch.setitem(sys.modules, "recorder.gui", None)  # makes the import fail
     assert main(["gui"], backend=FakeBackend()) == 1
     assert "tkinter" in capsys.readouterr().out
+
+
+def test_transcribe_subcommand_accepts_an_audio_file(tmp_path, capsys):
+    audio = tmp_path / "Voice 261013_093023.m4a"
+    audio.write_bytes(b"")
+    code = main(["transcribe", str(audio)], backend=FakeBackend(), model_loader=lambda *a: FakeModel())
+    out = capsys.readouterr().out
+    assert code == 0
+    assert (tmp_path / "Voice 261013_093023.transcript.txt").read_text() == "[00:00:00] from them\n"
+    assert "Voice 261013_093023.transcript.txt" in out
+
+
+def test_transcribe_subcommand_reports_a_missing_path(tmp_path, capsys):
+    code = main(["transcribe", str(tmp_path / "nope.m4a")], backend=FakeBackend(),
+                model_loader=lambda *a: FakeModel())
+    assert code == 1
+    assert "not found" in capsys.readouterr().out.lower()
+
+
+def test_transcribe_prints_progress_so_it_never_looks_frozen(tmp_path, capsys):
+    audio = tmp_path / "Voice 1.m4a"
+    audio.write_bytes(b"")
+    main(["transcribe", str(audio)], backend=FakeBackend(), model_loader=lambda *a: FakeModel())
+    out = capsys.readouterr().out
+    assert "Loading the speech model 'base.en'" in out
+    assert "Transcribing Voice 1.m4a" in out
+    assert out.index("Loading the speech model") < out.index("Transcribing") < out.index("Transcript:")
+
+
+def test_transcribe_failure_is_reported_not_silent(tmp_path, capsys):
+    audio = tmp_path / "Voice 1.m4a"
+    audio.write_bytes(b"")
+
+    def loader(*args):
+        raise RuntimeError("boom")
+
+    assert main(["transcribe", str(audio)], backend=FakeBackend(), model_loader=loader) == 1
+    assert "Transcription failed: boom" in capsys.readouterr().out
+
+
+def test_transcribe_missing_package_message_is_printed(tmp_path, capsys):
+    audio = tmp_path / "Voice 1.m4a"
+    audio.write_bytes(b"")
+
+    def loader(*args):
+        raise SystemExit("Transcription needs faster-whisper: pip install faster-whisper")
+
+    assert main(["transcribe", str(audio)], backend=FakeBackend(), model_loader=loader) == 1
+    assert "pip install faster-whisper" in capsys.readouterr().out
+
+
+def test_gui_command_passes_the_speech_settings(monkeypatch):
+    import sys
+
+    opened = []
+    monkeypatch.setitem(sys.modules, "recorder.gui",
+                        SimpleNamespace(run=lambda backend, **options: opened.append(options) or 0))
+    main(["gui", "--device", "cuda", "--model", "small.en", "--compute-type", "float16"],
+         backend=FakeBackend())
+    assert opened == [{"model_name": "small.en", "device": "cuda",
+                       "compute_type": "float16", "language": "en"}]
+
+
+def test_check_reports_cpu_and_gpu_separately(capsys):
+    def probe(model, device):
+        if device == "cpu":
+            return True, 0, "PROBE OK"
+        return False, -1073741819, "Windows fatal exception: access violation"
+
+    assert main(["check"], backend=FakeBackend(), probe_runner=probe) == 0
+    out = capsys.readouterr().out
+    assert "cpu" in out and "OK" in out
+    assert "cuda" in out and "FAILED" in out and "-1073741819" in out and "access violation" in out
+    assert "python -m recorder gui" in out
+    assert "requirements-gpu.txt" in out
+
+
+def test_check_recommends_the_gpu_when_it_works(capsys):
+    assert main(["check", "--model", "tiny.en"], backend=FakeBackend(),
+                probe_runner=lambda model, device: (True, 0, "PROBE OK")) == 0
+    assert "gui --device cuda" in capsys.readouterr().out
+
+
+def test_check_fails_when_nothing_works(capsys):
+    assert main(["check"], backend=FakeBackend(),
+                probe_runner=lambda model, device: (False, 1, "nope")) == 1
+    assert "Neither" in capsys.readouterr().out
+
+
+def test_transcribe_shows_live_progress(tmp_path, capsys):
+    audio = tmp_path / "Voice 1.m4a"
+    audio.write_bytes(b"")
+
+    class TimedModel:
+        def transcribe(self, path, **kwargs):
+            segs = [SimpleNamespace(start=0.0, end=4.0, text="a"), SimpleNamespace(start=4.0, end=8.0, text="b")]
+            return iter(segs), SimpleNamespace(duration=8.0)
+
+    main(["transcribe", str(audio)], backend=FakeBackend(), model_loader=lambda *a: TimedModel())
+    out = capsys.readouterr().out
+    assert "00:00:04 of 00:00:08 (50%)" in out
+    assert "00:00:08 of 00:00:08 (100%)" in out
+    assert out.index("(100%)") < out.index("Transcript:")

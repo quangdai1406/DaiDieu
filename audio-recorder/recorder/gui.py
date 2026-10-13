@@ -28,12 +28,21 @@ def ask_save_target(default_name):
     return Path(chosen), want_mp3
 
 
+def ask_open_file():
+    """Ask for an audio or video file to transcribe."""
+    chosen = filedialog.askopenfilename(
+        title="Choose an audio or video file to transcribe",
+        filetypes=[("Audio and video", "*.m4a *.mp3 *.wav *.mp4 *.flac *.ogg *.aac *.wma *.webm *.mkv"),
+                   ("All files", "*.*")])
+    return Path(chosen) if chosen else None
+
+
 class App:
     def __init__(self, root, controller, runner):
         self.root, self.controller, self.runner = root, controller, runner
         self._shown_transcript = None
         root.title("Meeting Recorder")
-        root.minsize(460, 520)
+        root.minsize(460, 560)
         root.protocol("WM_DELETE_WINDOW", self.close)
         root.report_callback_exception = self._unexpected_error
 
@@ -55,6 +64,10 @@ class App:
             button = ttk.Button(row, text=label, command=lambda n=name: self.press(n))
             button.pack(side="left", expand=True, fill="x", padx=3)
             self.buttons[name] = button
+        file_button = ttk.Button(frame, text="Transcribe an audio file...",
+                                 command=lambda: self.press("transcribe_file"))
+        file_button.pack(fill="x", padx=3, pady=(0, 8))
+        self.buttons["transcribe_file"] = file_button
 
         self._default_color = ttk.Style().lookup("TLabel", "foreground") or "black"
         self.status = ttk.Label(frame, text="", wraplength=420, justify="left")
@@ -116,9 +129,13 @@ class App:
         messagebox.showerror("Something went wrong", f"{exc_type.__name__}: {exc}")
 
 
-def run(backend):
+def run(backend, model_name="base.en", device="cpu", compute_type=None, language="en"):
     root = tk.Tk()
     runner = ThreadRunner()
-    App(root, AppController(backend, runner, ask_save_target), runner)
+    controller = AppController(backend, runner, ask_save_target, ask_open_file=ask_open_file,
+                               model_name=model_name, device=device, compute_type=compute_type,
+                               language=language)
+    App(root, controller, runner)
+    root.title(f"Meeting Recorder - transcription: {model_name} on {device}")
     root.mainloop()
     return 0

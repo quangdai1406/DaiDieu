@@ -29,6 +29,11 @@ Or double-click `start-recorder.bat`. Four buttons: **Record**, **Stop**, **Save
 - **Stop** finishes the files. **Save** copies the recording to a folder and name you choose
   (and can add a small `mix.mp3`). **Transcribe** shows a "Me" / "Others" transcript in the
   window and saves `transcript.txt` and `transcript.srt` next to the recording.
+- **Transcribe an audio file...** (the wide button under the four) lets you pick any audio or
+  video file, such as a phone voice memo (`.m4a`, `.mp3`, `.wav`, `.mp4`...). The transcript is
+  saved next to that file as `<name>.transcript.txt` and `<name>.transcript.srt`, and shown in
+  the window. An earlier transcript is never overwritten (you get `_2`, `_3`...). It does not
+  touch the recording you are working on.
 - Transcription needs `pip install -r requirements-transcribe.txt`. The first run downloads
   the speech model, so it needs internet and can take a few minutes.
 - Closing the window while recording stops and saves the recording first.
@@ -43,6 +48,7 @@ python -m recorder record --mp3              # also save a small mix.mp3
 python -m recorder record --transcribe       # transcribe locally after you stop
 python -m recorder record --mode karaoke --mic-gain 1.2 --music-gain 0.8
 python -m recorder transcribe recordings\26_1013_0905_meeting
+python -m recorder transcribe "C:\path\to\Voice 261013_093023.m4a"   # any audio file
 ```
 
 Stop with **Ctrl+C**. Each run makes a folder `recordings\YY_MMDD_HHMM_<mode>\`:
@@ -69,6 +75,34 @@ once per track, then the results are merged by time into `transcript.txt` / `.sr
 Defaults are `--model base.en --device cpu --compute-type int8`, chosen for a laptop GPU
 like the GeForce 940M (2 GB, old architecture; modern CUDA builds may not support it).
 Use `--model small.en` for better accuracy, slower. `--device cuda` is available on newer GPUs.
+
+Transcribing a file has no speaker labels, because one file is one track. On a CPU, a long
+file can take about as long as the audio itself.
+
+If Transcribe fails with `open() got an unexpected keyword argument 'metadata_errors'`, run
+`pip install "av<19"`: the newest `av` release removed an option faster-whisper still uses.
+
+## Check your setup, and use an NVIDIA GPU
+
+```powershell
+python -m recorder check
+```
+
+Tests the speech model on the processor and on the GPU, each in its own process, so a crash
+inside a library is reported instead of closing the program silently. It prints which one
+works and the command to use. The first run downloads the small `tiny.en` model.
+
+To use an NVIDIA GPU on Windows:
+
+1. `nvidia-smi` shows your GPU, its memory and the driver version. Use a recent driver.
+2. `pip install -r requirements-gpu.txt` installs the CUDA 12 libraries (cuBLAS and cuDNN).
+   The program finds them by itself; you do not need to edit `PATH`.
+3. `python -m recorder check`: the `cuda` line should say `OK`.
+4. `python -m recorder gui --device cuda --model small.en` (the same options work with
+   `record --transcribe` and `transcribe`). The window title shows the model and device in use.
+
+Bigger models are more accurate but need more video memory. Try `small.en`, then `medium.en`.
+The largest models need roughly 5 GB. If the GPU fails, add `--device cpu` (the default).
 
 ## How sync works
 
