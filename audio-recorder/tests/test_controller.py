@@ -443,3 +443,24 @@ def test_the_status_line_shows_progress_while_transcribing(tmp_path):
     rig.ctrl.transcribe_file()
     assert "0:00:04 of 0:00:08 transcribed (50%)" in seen[0]
     assert "transcribed (" not in rig.ctrl.snapshot().message  # gone once finished
+
+
+def test_the_status_line_shows_elapsed_time_and_speed(tmp_path):
+    seen = []
+    holder = {}
+
+    def segments():
+        yield SimpleNamespace(start=0.0, end=4.0, text="first")
+        holder["rig"].clock.now = 1002.0  # two seconds after the transcription started
+        yield SimpleNamespace(start=4.0, end=8.0, text="second")  # progress for segment 1 is already in
+        seen.append(holder["rig"].ctrl.snapshot().message)
+
+    class TimedModel:
+        def transcribe(self, path, **kwargs):
+            return segments(), SimpleNamespace(duration=8.0)
+
+    rig = Rig(tmp_path, loader=lambda *a: TimedModel(), ask_open_file=lambda: make_audio(tmp_path))
+    holder["rig"] = rig
+    rig.ctrl.transcribe_file()
+    assert "elapsed 0:00:02" in seen[0]
+    assert "real time" in seen[0]
