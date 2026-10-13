@@ -152,3 +152,18 @@ def test_stop_twice_returns_same_result(tmp_path):
 def test_unknown_mode_is_rejected(tmp_path):
     with pytest.raises(ValueError):
         make(tmp_path, mode="podcast")
+
+
+def test_unique_dir_returns_the_name_when_free(tmp_path):
+    from recorder.session import unique_dir
+
+    assert unique_dir(tmp_path, "a") == tmp_path / "a"
+
+
+def test_unique_dir_appends_a_counter_when_taken(tmp_path):
+    from recorder.session import unique_dir
+
+    (tmp_path / "a").mkdir()
+    assert unique_dir(tmp_path, "a") == tmp_path / "a_2"
+    (tmp_path / "a_2").mkdir()
+    assert unique_dir(tmp_path, "a") == tmp_path / "a_3"

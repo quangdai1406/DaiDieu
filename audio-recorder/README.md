@@ -16,7 +16,24 @@ pip install -r requirements.txt
 pip install -r requirements-transcribe.txt   # only for local transcription (optional)
 ```
 
-## Use
+## The simple window
+
+```powershell
+.\.venv\Scripts\python -m recorder gui
+```
+
+Or double-click `start-recorder.bat`. Four buttons: **Record**, **Stop**, **Save**, **Transcribe**.
+
+- **Record** starts a meeting recording with your default mic and speakers, with a timer and
+  live level bars. Recordings are written to `recordings\` as they happen.
+- **Stop** finishes the files. **Save** copies the recording to a folder and name you choose
+  (and can add a small `mix.mp3`). **Transcribe** shows a "Me" / "Others" transcript in the
+  window and saves `transcript.txt` and `transcript.srt` next to the recording.
+- Transcription needs `pip install -r requirements-transcribe.txt`. The first run downloads
+  the speech model, so it needs internet and can take a few minutes.
+- Closing the window while recording stops and saves the recording first.
+
+## Use (command line)
 
 ```powershell
 python -m recorder devices                   # list mics and loopback devices
@@ -70,7 +87,8 @@ Sources at different sample rates are converted to the session rate.
 - Resampling is linear interpolation. It is fine between 44.1 and 48 kHz; do not use a
   low `--sample-rate` (such as 16000) when you care about quality.
 - Meeting mode records other people. Tell participants and follow local consent law.
-- Stop key is Ctrl+C only. CLI only, no GUI.
+- The window has no device pickers or settings: it always uses your default devices (use the command line for `--mic` / `--loopback`), and it records in meeting mode.
+- On the command line, stop with Ctrl+C.
 
 ## Tests
 

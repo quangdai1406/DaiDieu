@@ -19,6 +19,20 @@ MODES = {
 }
 
 
+def unique_dir(base, name):
+    """Return ``base/name``, or ``base/name_2``, ``_3``... if that folder is taken.
+
+    Recordings are named by minute, so two started in the same minute must not
+    overwrite each other.
+    """
+    base = Path(base)
+    candidate, n = base / name, 2
+    while candidate.exists():
+        candidate = base / f"{name}_{n}"
+        n += 1
+    return candidate
+
+
 @dataclass(frozen=True)
 class SessionResult:
     mix: Path

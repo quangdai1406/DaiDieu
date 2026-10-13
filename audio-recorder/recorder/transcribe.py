@@ -8,6 +8,10 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 
+# track file name -> label used in transcripts
+SPEAKERS = {"me": "Me", "others": "Others"}
+
+
 @dataclass(frozen=True)
 class Segment:
     start: float
