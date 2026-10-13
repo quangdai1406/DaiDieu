@@ -219,3 +219,35 @@ def test_transcribe_shows_live_progress(tmp_path, capsys):
     assert "00:00:04 of 00:00:08 (50%)" in out
     assert "00:00:08 of 00:00:08 (100%)" in out
     assert out.index("(100%)") < out.index("Transcript:")
+
+
+def test_progress_line_shows_elapsed_time_and_speed(capsys):
+    from recorder.cli import progress_printer
+
+    ticks = iter([100.0, 102.0])  # when it started, then at the first update
+    show = progress_printer(clock=lambda: next(ticks))
+    show(4.0, 8.0)
+    out = capsys.readouterr().out
+    assert "00:00:04 of 00:00:08 (50%)" in out
+    assert "elapsed 00:00:02" in out and "2.0x real time" in out
+
+
+def test_progress_finish_prints_a_summary(capsys):
+    from recorder.cli import progress_printer
+
+    ticks = iter([0.0, 4.0, 5.0])  # start, last update, finish
+    show = progress_printer(clock=lambda: next(ticks))
+    show(8.0, 8.0)
+    capsys.readouterr()
+    show.finish()
+    out = capsys.readouterr().out
+    assert "Finished in 00:00:05" in out and "1.6x real time" in out
+
+
+def test_progress_omits_speed_in_the_first_second(capsys):
+    from recorder.cli import progress_printer
+
+    ticks = iter([0.0, 0.2])
+    progress_printer(clock=lambda: next(ticks))(4.0, 8.0)
+    out = capsys.readouterr().out
+    assert "elapsed 00:00:00" in out and "real time" not in out

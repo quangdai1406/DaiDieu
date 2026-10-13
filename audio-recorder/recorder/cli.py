@@ -68,23 +68,34 @@ def default_waiter(session):
         print()
 
 
-def progress_printer():
-    """A callback that rewrites one console line: '00:12:34 of 00:45:10 (27%)'."""
-    state = {"last": None, "shown": False}
+def progress_printer(clock=time.monotonic):
+    """A callback that rewrites one console line: '00:12:34 of 00:45:10 (27%)  elapsed 00:02:10, 5.8x real time'."""
+    started = clock()
+    state = {"last": None, "done": 0.0, "shown": False}
+
+    def pace(done, elapsed):
+        text = f"elapsed {format_clock(elapsed)}"
+        if elapsed >= 1 and done > 0:
+            text += f", {done / elapsed:.1f}x real time"
+        return text
 
     def show(done, total):
         percent = int(done / total * 100) if total else None
         if percent is not None and percent == state["last"]:
             return
-        state["last"] = percent
-        if total:
-            text = f"  {format_clock(done)} of {format_clock(total)} ({percent}%)"
-        else:
-            text = f"  {format_clock(done)} transcribed so far"
-        print("\r" + text, end="", flush=True)
+        state["last"], state["done"] = percent, done
+        where = f"{format_clock(done)} of {format_clock(total)} ({percent}%)" if total \
+            else f"{format_clock(done)} transcribed so far"
+        print("\r  " + where + "  " + pace(done, clock() - started), end="", flush=True)
         state["shown"] = True
 
-    show.finish = lambda: print() if state["shown"] else None
+    def finish():
+        if state["shown"]:
+            elapsed = clock() - started
+            speed = f" ({state['done'] / elapsed:.1f}x real time)" if elapsed >= 1 else ""
+            print(f"\n  Finished in {format_clock(elapsed)}{speed}.")
+
+    show.finish = finish
     return show
 
 
