@@ -1,0 +1,80 @@
+# audio-recorder
+
+Records your **speakers** (what you hear) and your **microphone** (your voice) at the same
+time, for meetings or karaoke. Windows 10/11, Python 3.10+.
+
+Built for the headphones case: your mic hears only you, and the speaker loopback hears
+everyone else. The two tracks stay separate, so the transcript can label **Me** and
+**Others** without any speaker-detection model.
+
+## Install (Windows)
+
+```powershell
+cd audio-recorder
+python -m venv .venv ; .venv\Scripts\activate
+pip install -r requirements.txt
+pip install -r requirements-transcribe.txt   # only for local transcription (optional)
+```
+
+## Use
+
+```powershell
+python -m recorder devices                   # list mics and loopback devices
+python -m recorder record                    # meeting mode, default devices
+python -m recorder record --mic 12 --loopback 15
+python -m recorder record --mp3              # also save a small mix.mp3
+python -m recorder record --transcribe       # transcribe locally after you stop
+python -m recorder record --mode karaoke --mic-gain 1.2 --music-gain 0.8
+python -m recorder transcribe recordings\26_1013_0905_meeting
+```
+
+Stop with **Ctrl+C**. Each run makes a folder `recordings\YY_MMDD_HHMM_<mode>\`:
+
+| Mode | Files |
+|---|---|
+| `meeting` | `me.wav`, `others.wav`, `mix.wav` (+ `mix.mp3`, `transcript.txt`, `transcript.srt` if asked) |
+| `karaoke` | `mix.wav` only (add `--keep-tracks` to keep `voice.wav` and `music.wav`) |
+
+All files are mono, 16-bit, 48 kHz by default (`--sample-rate` to change).
+
+## Transcribe with Microsoft 365 (no local model needed)
+
+In Word: **Home > Dictate (arrow) > Transcribe > Upload audio**, then pick `mix.wav` or `mix.mp3`.
+A WAV is about 345 MB per hour; use `--mp3` for long meetings. Check Microsoft's current
+file size and length limits. Word detects speakers itself; for exact Me/Others labels use
+the local transcript instead.
+
+## Local transcription (optional)
+
+Uses [faster-whisper](https://github.com/SYSTRAN/faster-whisper), fully offline. It runs
+once per track, then the results are merged by time into `transcript.txt` / `.srt`.
+
+Defaults are `--model base.en --device cpu --compute-type int8`, chosen for a laptop GPU
+like the GeForce 940M (2 GB, old architecture; modern CUDA builds may not support it).
+Use `--model small.en` for better accuracy, slower. `--device cuda` is available on newer GPUs.
+
+## How sync works
+
+All chunks are stamped with one monotonic clock. Each track is written at its stamped
+position, so the tracks start together and stay the same length. Windows sends no
+loopback data while nothing is playing, and those gaps are filled with silence.
+Sources at different sample rates are converted to the session rate.
+
+## Limitations
+
+- **Real capture is untested.** The code that talks to PyAudioWPatch was only tested
+  against a fake module on Linux. Run `devices`, then a 10-second `record`, and check
+  both tracks play before relying on it.
+- No continuous clock-drift correction: small timing jumps (over 50 ms) are repaired,
+  but slow drift between two devices is not resampled away.
+- Resampling is linear interpolation. It is fine between 44.1 and 48 kHz; do not use a
+  low `--sample-rate` (such as 16000) when you care about quality.
+- Meeting mode records other people. Tell participants and follow local consent law.
+- Stop key is Ctrl+C only. CLI only, no GUI.
+
+## Tests
+
+```powershell
+pip install -r requirements-dev.txt
+pytest
+```
