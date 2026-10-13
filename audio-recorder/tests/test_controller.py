@@ -423,3 +423,23 @@ def test_a_missing_gpu_library_gets_a_plain_hint(tmp_path):
     snap = rig.ctrl.snapshot()
     assert snap.message_kind == "error"
     assert "requirements-gpu.txt" in snap.message and "--device cpu" in snap.message
+
+
+def test_the_status_line_shows_progress_while_transcribing(tmp_path):
+    seen = []
+    holder = {}
+
+    def segments():
+        yield SimpleNamespace(start=0.0, end=4.0, text="first")
+        seen.append(holder["rig"].ctrl.snapshot().message)  # runs after progress for segment 1
+        yield SimpleNamespace(start=4.0, end=8.0, text="second")
+
+    class TimedModel:
+        def transcribe(self, path, **kwargs):
+            return segments(), SimpleNamespace(duration=8.0)
+
+    rig = Rig(tmp_path, loader=lambda *a: TimedModel(), ask_open_file=lambda: make_audio(tmp_path))
+    holder["rig"] = rig
+    rig.ctrl.transcribe_file()
+    assert "0:00:04 of 0:00:08 transcribed (50%)" in seen[0]
+    assert "transcribed (" not in rig.ctrl.snapshot().message  # gone once finished

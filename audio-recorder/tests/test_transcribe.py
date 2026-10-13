@@ -14,13 +14,14 @@ from recorder.transcribe import (Segment, add_nvidia_dll_dirs, coalesce, explain
 
 
 class FakeModel:
-    def __init__(self, segments):
+    def __init__(self, segments, duration=None):
         self._segments = segments
+        self._duration = duration
         self.calls = []
 
     def transcribe(self, path, **kwargs):
         self.calls.append((path, kwargs))
-        return iter(self._segments), SimpleNamespace(language="en")
+        return iter(self._segments), SimpleNamespace(language="en", duration=self._duration)
 
 
 def seg(start, end, speaker, text):
@@ -195,3 +196,34 @@ def test_explain_error_adds_a_gpu_hint_for_missing_cuda_libraries():
 def test_explain_error_leaves_other_errors_alone():
     assert explain_error(RuntimeError("boom")) == "Transcription failed: boom"
     assert explain_error(SystemExit("needs a package")) == "needs a package"
+
+
+def test_transcribe_track_reports_progress_for_every_segment(tmp_path):
+    model = FakeModel([SimpleNamespace(start=0.0, end=2.0, text="a"),
+                       SimpleNamespace(start=2.0, end=5.0, text="  "),
+                       SimpleNamespace(start=5.0, end=8.0, text="b")], duration=10.0)
+    seen = []
+    out = transcribe_track(model, tmp_path / "x.wav", "Me", on_progress=lambda done, total: seen.append((done, total)))
+    assert seen == [(2.0, 10.0), (5.0, 10.0), (8.0, 10.0)]
+    assert [s.text for s in out] == ["a", "b"]
+
+
+def test_progress_total_is_none_when_the_length_is_unknown(tmp_path):
+    model = FakeModel([SimpleNamespace(start=0.0, end=2.0, text="a")])
+    seen = []
+    transcribe_track(model, tmp_path / "x.wav", "Me", on_progress=lambda done, total: seen.append((done, total)))
+    assert seen == [(2.0, None)]
+
+
+def test_transcribe_file_and_write_transcripts_pass_progress_through(tmp_path):
+    audio = tmp_path / "a.m4a"
+    audio.write_bytes(b"")
+    seen = []
+    transcribe_file(FakeModel([SimpleNamespace(start=0.0, end=3.0, text="a")], duration=6.0), audio,
+                    on_progress=lambda done, total: seen.append((done, total)))
+    assert seen == [(3.0, 6.0)]
+    (tmp_path / "me.wav").write_bytes(b"")
+    seen.clear()
+    write_transcripts(FakeModel([SimpleNamespace(start=0.0, end=1.0, text="a")], duration=2.0), tmp_path,
+                      {"me": "Me"}, on_progress=lambda done, total: seen.append((done, total)))
+    assert seen == [(1.0, 2.0)]

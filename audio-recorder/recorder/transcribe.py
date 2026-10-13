@@ -125,12 +125,20 @@ def load_model(name="base.en", device="cpu", compute_type=None):
     return WhisperModel(name, device=device, compute_type=resolve_compute_type(device, compute_type))
 
 
-def transcribe_track(model, wav_path, speaker, language="en"):
-    segments, _info = model.transcribe(str(wav_path), language=language, vad_filter=True)
-    return [Segment(s.start, s.end, speaker, s.text.strip()) for s in segments if s.text.strip()]
+def transcribe_track(model, wav_path, speaker, language="en", on_progress=None):
+    """Transcribe one file. ``on_progress(seconds_done, total_seconds_or_None)`` is called per segment."""
+    segments, info = model.transcribe(str(wav_path), language=language, vad_filter=True)
+    total = getattr(info, "duration", None)
+    out = []
+    for s in segments:  # lazy: the model works while this loop runs
+        if s.text.strip():
+            out.append(Segment(s.start, s.end, speaker, s.text.strip()))
+        if on_progress:
+            on_progress(s.end, total)
+    return out
 
 
-def write_transcripts(model, session_dir, speakers, language="en"):
+def write_transcripts(model, session_dir, speakers, language="en", on_progress=None):
     """Transcribe ``{track name: speaker label}`` found in ``session_dir``.
 
     Writes ``transcript.txt`` and ``transcript.srt`` and returns their paths.
@@ -140,7 +148,7 @@ def write_transcripts(model, session_dir, speakers, language="en"):
     for track, speaker in speakers.items():
         wav = session_dir / f"{track}.wav"
         if wav.exists():
-            per_track.append(transcribe_track(model, wav, speaker, language))
+            per_track.append(transcribe_track(model, wav, speaker, language, on_progress))
     segments = coalesce(merge_segments(*per_track))
     txt, srt = session_dir / "transcript.txt", session_dir / "transcript.srt"
     txt.write_text(to_txt(segments), encoding="utf-8")
@@ -160,7 +168,7 @@ def _free_output_pair(audio_path):
         n += 1
 
 
-def transcribe_file(model, audio_path, language="en"):
+def transcribe_file(model, audio_path, language="en", on_progress=None):
     """Transcribe any audio or video file the Whisper decoder can read (m4a, mp3, wav, mp4...).
 
     Writes the transcript beside the file and never overwrites an earlier one.
@@ -169,7 +177,7 @@ def transcribe_file(model, audio_path, language="en"):
     audio_path = Path(audio_path)
     if not audio_path.is_file():
         raise FileNotFoundError(f"File not found: {audio_path}")
-    segments = coalesce(transcribe_track(model, audio_path, "", language))
+    segments = coalesce(transcribe_track(model, audio_path, "", language, on_progress))
     txt, srt = _free_output_pair(audio_path)
     txt.write_text(to_txt(segments), encoding="utf-8")
     srt.write_text(to_srt(segments), encoding="utf-8")

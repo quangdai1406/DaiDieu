@@ -203,3 +203,19 @@ def test_check_fails_when_nothing_works(capsys):
     assert main(["check"], backend=FakeBackend(),
                 probe_runner=lambda model, device: (False, 1, "nope")) == 1
     assert "Neither" in capsys.readouterr().out
+
+
+def test_transcribe_shows_live_progress(tmp_path, capsys):
+    audio = tmp_path / "Voice 1.m4a"
+    audio.write_bytes(b"")
+
+    class TimedModel:
+        def transcribe(self, path, **kwargs):
+            segs = [SimpleNamespace(start=0.0, end=4.0, text="a"), SimpleNamespace(start=4.0, end=8.0, text="b")]
+            return iter(segs), SimpleNamespace(duration=8.0)
+
+    main(["transcribe", str(audio)], backend=FakeBackend(), model_loader=lambda *a: TimedModel())
+    out = capsys.readouterr().out
+    assert "00:00:04 of 00:00:08 (50%)" in out
+    assert "00:00:08 of 00:00:08 (100%)" in out
+    assert out.index("(100%)") < out.index("Transcript:")

@@ -107,6 +107,7 @@ class AppController:
         self._started_at = 0.0
         self._elapsed = 0.0
         self._transcript = ""
+        self._progress = None  # (seconds done, total seconds or None) while transcribing
         self._message, self._kind = "Ready. Press Record to start.", "info"
 
     # ---- what the window shows -------------------------------------------------
@@ -120,8 +121,20 @@ class AppController:
             mic_level=peaks.get("mic", 0.0),
             speaker_level=peaks.get("loopback", 0.0),
             enabled={name: self._is_enabled(name) for name in BUTTONS},
-            message=self._message, message_kind=self._kind,
+            message=self._message_with_progress(), message_kind=self._kind,
             transcript=self._transcript, session_dir=self._session_dir)
+
+    def _message_with_progress(self):
+        if self._state is not State.TRANSCRIBING or not self._progress:
+            return self._message
+        done, total = self._progress
+        if total:
+            return (f"{self._message}\n{format_elapsed(done)} of {format_elapsed(total)} "
+                    f"transcribed ({int(done / total * 100)}%)")
+        return f"{self._message}\n{format_elapsed(done)} transcribed so far"
+
+    def _set_progress(self, done, total):
+        self._progress = (done, total)  # called from the worker thread; one atomic assignment
 
     def _is_enabled(self, button):
         if self._state is State.IDLE:
@@ -225,12 +238,14 @@ class AppController:
         if self._state is not State.STOPPED or not self._has_tracks():
             return False
         self._state = State.TRANSCRIBING
+        self._progress = None
         self._say("Transcribing... The first time, the speech model is downloaded, "
                   "which can take a few minutes. Keep this window open.")
         session_dir = self._session_dir
 
         def work():
-            txt, _srt = write_transcripts(self._load_model(), session_dir, SPEAKERS, self._language)
+            txt, _srt = write_transcripts(self._load_model(), session_dir, SPEAKERS, self._language,
+                                          self._set_progress)
             return txt.read_text(encoding="utf-8")
 
         self._runner.submit(work, self._on_transcribed)
@@ -243,6 +258,7 @@ class AppController:
 
     def _on_transcribed(self, text, error):
         self._state = State.STOPPED
+        self._progress = None
         if error is not None:
             self._say(explain_error(error), "error")
         elif not text.strip():
@@ -262,11 +278,13 @@ class AppController:
             return False
         audio, back_to = Path(chosen), self._state
         self._state = State.TRANSCRIBING
+        self._progress = None
         self._say(f"Transcribing {audio.name}... The first time, the speech model is downloaded. "
                   "A long file can take about as long as the audio itself. Keep this window open.")
 
         def work():
-            txt, _srt = transcribe_audio_file(self._load_model(), audio, self._language)
+            txt, _srt = transcribe_audio_file(self._load_model(), audio, self._language,
+                                              self._set_progress)
             return txt, txt.read_text(encoding="utf-8")
 
         self._runner.submit(work, lambda result, error: self._on_file_transcribed(back_to, result, error))
@@ -274,6 +292,7 @@ class AppController:
 
     def _on_file_transcribed(self, back_to, result, error):
         self._state = back_to
+        self._progress = None
         if error is not None:
             self._say(explain_error(error), "error")
             return

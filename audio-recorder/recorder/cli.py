@@ -8,7 +8,8 @@ from pathlib import Path
 
 from .mixer import export_mp3
 from .session import MODES, RecordingSession, unique_dir
-from .transcribe import GPU_HINT, SPEAKERS, explain_error, load_model, transcribe_file, write_transcripts
+from .transcribe import (GPU_HINT, SPEAKERS, explain_error, format_clock, load_model, transcribe_file,
+                         write_transcripts)
 
 CONSENT = ("Reminder: tell the other participants you are recording. Many places "
            "require everyone's consent.")
@@ -67,6 +68,26 @@ def default_waiter(session):
         print()
 
 
+def progress_printer():
+    """A callback that rewrites one console line: '00:12:34 of 00:45:10 (27%)'."""
+    state = {"last": None, "shown": False}
+
+    def show(done, total):
+        percent = int(done / total * 100) if total else None
+        if percent is not None and percent == state["last"]:
+            return
+        state["last"] = percent
+        if total:
+            text = f"  {format_clock(done)} of {format_clock(total)} ({percent}%)"
+        else:
+            text = f"  {format_clock(done)} transcribed so far"
+        print("\r" + text, end="", flush=True)
+        state["shown"] = True
+
+    show.finish = lambda: print() if state["shown"] else None
+    return show
+
+
 def run_transcribe(target, args, model_loader):
     target = Path(target)
     if not target.exists():
@@ -78,10 +99,12 @@ def run_transcribe(target, args, model_loader):
         model = model_loader(args.model, args.device, args.compute_type)
         print(f"Transcribing {target.name}... (a long file can take about as long as the audio)",
               flush=True)
+        progress = progress_printer()
         if target.is_dir():
-            txt, srt = write_transcripts(model, target, SPEAKERS, args.language)
+            txt, srt = write_transcripts(model, target, SPEAKERS, args.language, progress)
         else:
-            txt, srt = transcribe_file(model, target, args.language)
+            txt, srt = transcribe_file(model, target, args.language, progress)
+        progress.finish()
     except (Exception, SystemExit) as exc:  # noqa: BLE001 - always say what went wrong
         print(explain_error(exc))
         return 1
