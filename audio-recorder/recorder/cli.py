@@ -4,15 +4,13 @@ import argparse
 import sys
 import time
 from datetime import datetime
-from pathlib import Path
 
 from .mixer import export_mp3
-from .session import MODES, RecordingSession
-from .transcribe import load_model, write_transcripts
+from .session import MODES, RecordingSession, unique_dir
+from .transcribe import SPEAKERS, load_model, write_transcripts
 
 CONSENT = ("Reminder: tell the other participants you are recording. Many places "
            "require everyone's consent.")
-SPEAKERS = {"me": "Me", "others": "Others"}
 
 
 def build_parser():
@@ -20,6 +18,7 @@ def build_parser():
     sub = p.add_subparsers(dest="command", required=True)
 
     sub.add_parser("devices", help="list microphones and loopback (speaker) devices")
+    sub.add_parser("gui", help="open the simple Record / Stop / Save / Transcribe window")
 
     rec = sub.add_parser("record", help="record speakers + microphone")
     rec.add_argument("--mode", choices=sorted(MODES), default="meeting")
@@ -73,6 +72,15 @@ def main(argv=None, *, backend=None, waiter=default_waiter, model_loader=load_mo
         from .wasapi import WasapiBackend
         backend = WasapiBackend()
 
+    if args.command == "gui":
+        try:
+            from .gui import run
+        except ImportError:
+            print("The window needs tkinter, which comes with the python.org installer "
+                  "(re-run it and tick 'tcl/tk and IDLE').")
+            return 1
+        return run(backend)
+
     if args.command == "devices":
         for d in backend.list_devices():
             star = "*" if d["default"] else " "
@@ -84,7 +92,7 @@ def main(argv=None, *, backend=None, waiter=default_waiter, model_loader=load_mo
         run_transcribe(args.session_dir, args, model_loader)
         return 0
 
-    session_dir = Path(args.out) / f"{now():%y_%m%d_%H%M}_{args.mode}"
+    session_dir = unique_dir(args.out, f"{now():%y_%m%d_%H%M}_{args.mode}")
     mic, loopback = backend.open_sources(args.mic, args.loopback)
     session = RecordingSession(session_dir, mic, loopback, mode=args.mode,
                                sample_rate=args.sample_rate, mic_gain=args.mic_gain,

@@ -4,23 +4,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from recorder.cli import main
-from tests.fakes import FakeSource
-
-
-class FakeBackend:
-    def __init__(self):
-        self.mic = FakeSource("mic", 8000)
-        self.loopback = FakeSource("loopback", 8000)
-
-    def list_devices(self):
-        return [{"index": 1, "name": "Headset Mic", "kind": "mic", "channels": 1,
-                 "rate": 44100, "default": True},
-                {"index": 2, "name": "Speakers [Loopback]", "kind": "loopback", "channels": 2,
-                 "rate": 48000, "default": False}]
-
-    def open_sources(self, mic_index, loopback_index):
-        self.requested = (mic_index, loopback_index)
-        return self.mic, self.loopback
+from tests.fakes import FakeBackend
 
 
 class FakeModel:
@@ -104,3 +88,29 @@ def test_mp3_flag_writes_mix_mp3(tmp_path):
     main(["record", "--out", str(tmp_path), "--sample-rate", "8000", "--mp3"],
          backend=backend, waiter=waiter, now=NOW)
     assert (tmp_path / "26_1013_0905_meeting" / "mix.mp3").exists()
+
+
+def test_two_recordings_in_the_same_minute_do_not_overwrite(tmp_path):
+    for _ in range(2):
+        main(["record", "--out", str(tmp_path), "--sample-rate", "8000"],
+             backend=FakeBackend(), waiter=lambda s: None, now=NOW)
+    assert (tmp_path / "26_1013_0905_meeting" / "mix.wav").exists()
+    assert (tmp_path / "26_1013_0905_meeting_2" / "mix.wav").exists()
+
+
+def test_gui_command_opens_the_window_with_the_backend(monkeypatch):
+    import sys
+
+    opened = []
+    monkeypatch.setitem(sys.modules, "recorder.gui", SimpleNamespace(run=lambda backend: opened.append(backend) or 0))
+    backend = FakeBackend()
+    assert main(["gui"], backend=backend) == 0
+    assert opened == [backend]
+
+
+def test_gui_command_explains_a_missing_tkinter(monkeypatch, capsys):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "recorder.gui", None)  # makes the import fail
+    assert main(["gui"], backend=FakeBackend()) == 1
+    assert "tkinter" in capsys.readouterr().out
