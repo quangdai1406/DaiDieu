@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .mixer import export_mp3
 from .session import MODES, RecordingSession, unique_dir
-from .transcribe import SPEAKERS, load_model, transcribe_file, write_transcripts
+from .transcribe import GPU_HINT, SPEAKERS, explain_error, load_model, transcribe_file, write_transcripts
 
 CONSENT = ("Reminder: tell the other participants you are recording. Many places "
            "require everyone's consent.")
@@ -19,7 +19,11 @@ def build_parser():
     sub = p.add_subparsers(dest="command", required=True)
 
     sub.add_parser("devices", help="list microphones and loopback (speaker) devices")
-    sub.add_parser("gui", help="open the simple Record / Stop / Save / Transcribe window")
+    gui = sub.add_parser("gui", help="open the simple Record / Stop / Save / Transcribe window")
+    add_whisper_args(gui)
+
+    chk = sub.add_parser("check", help="test whether transcription works on the processor and on the GPU")
+    chk.add_argument("--model", default="tiny.en", help="a small model keeps the test quick")
 
     rec = sub.add_parser("record", help="record speakers + microphone")
     rec.add_argument("--mode", choices=sorted(MODES), default="meeting")
@@ -47,7 +51,8 @@ def build_parser():
 def add_whisper_args(parser):
     parser.add_argument("--model", default="base.en", help="faster-whisper model name")
     parser.add_argument("--device", default="cpu", choices=["cpu", "cuda", "auto"])
-    parser.add_argument("--compute-type", default="int8")
+    parser.add_argument("--compute-type", default=None,
+                        help="precision; default is int8 on the processor and auto on a GPU")
     parser.add_argument("--language", default="en")
 
 
@@ -78,17 +83,58 @@ def run_transcribe(target, args, model_loader):
         else:
             txt, srt = transcribe_file(model, target, args.language)
     except (Exception, SystemExit) as exc:  # noqa: BLE001 - always say what went wrong
-        print(str(exc) if isinstance(exc, SystemExit) else f"Transcription failed: {exc}")
+        print(explain_error(exc))
         return 1
     print(f"Transcript: {txt}\nSubtitles:  {srt}")
     return 0
 
 
-def main(argv=None, *, backend=None, waiter=default_waiter, model_loader=load_model, now=datetime.now):
+def run_probe(model, device):
+    """Run the self-test in a separate process; returns (ok, exit code, last output lines)."""
+    import subprocess
+
+    try:
+        done = subprocess.run([sys.executable, "-X", "faulthandler", "-m", "recorder.probe", model, device],
+                              capture_output=True, text=True, timeout=900)
+    except subprocess.TimeoutExpired:
+        return False, None, "timed out after 15 minutes"
+    text = (done.stdout + "\n" + done.stderr).strip()
+    return done.returncode == 0 and "PROBE OK" in done.stdout, done.returncode, "\n".join(text.splitlines()[-6:])
+
+
+def run_check(args, probe_runner):
+    print(f"Testing the speech model '{args.model}' on each device (the first run downloads it)...", flush=True)
+    works = {}
+    for device in ("cpu", "cuda"):
+        ok, code, detail = probe_runner(args.model, device)
+        works[device] = ok
+        if ok:
+            print(f"  {device:<4}: OK")
+            continue
+        hexcode = f" (0x{code & 0xFFFFFFFF:08X})" if isinstance(code, int) else ""
+        print(f"  {device:<4}: FAILED (exit code {code}{hexcode})")
+        for line in detail.splitlines():
+            print(f"        {line}")
+    if works["cuda"]:
+        print("Use the GPU:  python -m recorder gui --device cuda   (try --model small.en or medium.en)")
+        return 0
+    if works["cpu"]:
+        print("The processor works. Use:  python -m recorder gui")
+        print(GPU_HINT)
+        return 0
+    print("Neither the processor nor the GPU worked. Please send me this whole output.")
+    return 1
+
+
+def main(argv=None, *, backend=None, waiter=default_waiter, model_loader=load_model,
+         now=datetime.now, probe_runner=run_probe):
     args = build_parser().parse_args(argv)
     if backend is None:
         from .wasapi import WasapiBackend
         backend = WasapiBackend()
+
+    if args.command == "check":
+        return run_check(args, probe_runner)
 
     if args.command == "gui":
         try:
@@ -97,7 +143,8 @@ def main(argv=None, *, backend=None, waiter=default_waiter, model_loader=load_mo
             print("The window needs tkinter, which comes with the python.org installer "
                   "(re-run it and tick 'tcl/tk and IDLE').")
             return 1
-        return run(backend)
+        return run(backend, model_name=args.model, device=args.device,
+                   compute_type=args.compute_type, language=args.language)
 
     if args.command == "devices":
         for d in backend.list_devices():

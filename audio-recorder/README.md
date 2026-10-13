@@ -82,6 +82,28 @@ file can take about as long as the audio itself.
 If Transcribe fails with `open() got an unexpected keyword argument 'metadata_errors'`, run
 `pip install "av<19"`: the newest `av` release removed an option faster-whisper still uses.
 
+## Check your setup, and use an NVIDIA GPU
+
+```powershell
+python -m recorder check
+```
+
+Tests the speech model on the processor and on the GPU, each in its own process, so a crash
+inside a library is reported instead of closing the program silently. It prints which one
+works and the command to use. The first run downloads the small `tiny.en` model.
+
+To use an NVIDIA GPU on Windows:
+
+1. `nvidia-smi` shows your GPU, its memory and the driver version. Use a recent driver.
+2. `pip install -r requirements-gpu.txt` installs the CUDA 12 libraries (cuBLAS and cuDNN).
+   The program finds them by itself; you do not need to edit `PATH`.
+3. `python -m recorder check`: the `cuda` line should say `OK`.
+4. `python -m recorder gui --device cuda --model small.en` (the same options work with
+   `record --transcribe` and `transcribe`). The window title shows the model and device in use.
+
+Bigger models are more accurate but need more video memory. Try `small.en`, then `medium.en`.
+The largest models need roughly 5 GB. If the GPU fails, add `--device cpu` (the default).
+
 ## How sync works
 
 All chunks are stamped with one monotonic clock. Each track is written at its stamped

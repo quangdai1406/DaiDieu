@@ -1,8 +1,14 @@
 from types import SimpleNamespace
 
+import os
+import sys
+import types
+
 import pytest
 
-from recorder.transcribe import (Segment, coalesce, format_srt_time, format_clock,
+import recorder.transcribe as transcribe_module
+
+from recorder.transcribe import (Segment, add_nvidia_dll_dirs, coalesce, explain_error, load_model, resolve_compute_type, format_srt_time, format_clock,
                                  merge_segments, to_srt, to_txt, transcribe_file, transcribe_track,
                                  write_transcripts)
 
@@ -132,3 +138,60 @@ def test_transcribe_file_never_overwrites_an_earlier_transcript(tmp_path):
 def test_transcribe_file_reports_a_missing_file(tmp_path):
     with pytest.raises(FileNotFoundError, match="not found"):
         transcribe_file(FakeModel([]), tmp_path / "nope.m4a")
+
+
+def test_resolve_compute_type_defaults_per_device():
+    assert resolve_compute_type("cpu", None) == "int8"
+    assert resolve_compute_type("cuda", None) == "auto"
+    assert resolve_compute_type("auto", None) == "auto"
+    assert resolve_compute_type("cuda", "float16") == "float16"
+
+
+def test_add_nvidia_dll_dirs_finds_the_bin_folders(tmp_path, monkeypatch):
+    site = tmp_path / "site"
+    cublas_bin = site / "nvidia" / "cublas" / "bin"
+    cudnn_bin = site / "nvidia" / "cudnn" / "bin"
+    for folder in (cublas_bin, cudnn_bin, site / "nvidia" / "other"):
+        folder.mkdir(parents=True)
+    added = []
+    monkeypatch.setattr(os, "add_dll_directory", lambda p: added.append(p), raising=False)
+    monkeypatch.setenv("PATH", "old_path")
+
+    dirs = add_nvidia_dll_dirs([str(site)])
+    assert sorted(dirs) == sorted([str(cublas_bin), str(cudnn_bin)])
+    assert sorted(added) == sorted(dirs)
+    parts = os.environ["PATH"].split(os.pathsep)
+    assert set(dirs) <= set(parts) and "old_path" in parts
+
+    add_nvidia_dll_dirs([str(site)])  # calling again must not pile up PATH entries
+    assert os.environ["PATH"].split(os.pathsep).count(str(cublas_bin)) == 1
+
+
+def test_add_nvidia_dll_dirs_with_nothing_installed(tmp_path):
+    assert add_nvidia_dll_dirs([str(tmp_path)]) == []
+
+
+def test_load_model_passes_device_and_the_resolved_compute_type(monkeypatch):
+    calls, dll_calls = [], []
+    fake = types.ModuleType("faster_whisper")
+    fake.WhisperModel = lambda name, device, compute_type: calls.append((name, device, compute_type)) or "model"
+    monkeypatch.setitem(sys.modules, "faster_whisper", fake)
+    monkeypatch.setattr(transcribe_module, "add_nvidia_dll_dirs", lambda *a: dll_calls.append(1) or [])
+
+    assert load_model("base.en", "cpu", None) == "model"
+    assert calls[-1] == ("base.en", "cpu", "int8") and dll_calls == []
+    load_model("small.en", "cuda", None)
+    assert calls[-1] == ("small.en", "cuda", "auto") and dll_calls == [1]
+    load_model("small.en", "cuda", "float16")
+    assert calls[-1] == ("small.en", "cuda", "float16")
+
+
+def test_explain_error_adds_a_gpu_hint_for_missing_cuda_libraries():
+    msg = explain_error(RuntimeError("Library cublas64_12.dll is not found or cannot be loaded"))
+    assert "cublas64_12.dll" in msg
+    assert "requirements-gpu.txt" in msg and "--device cpu" in msg
+
+
+def test_explain_error_leaves_other_errors_alone():
+    assert explain_error(RuntimeError("boom")) == "Transcription failed: boom"
+    assert explain_error(SystemExit("needs a package")) == "needs a package"

@@ -102,10 +102,12 @@ def test_gui_command_opens_the_window_with_the_backend(monkeypatch):
     import sys
 
     opened = []
-    monkeypatch.setitem(sys.modules, "recorder.gui", SimpleNamespace(run=lambda backend: opened.append(backend) or 0))
+    monkeypatch.setitem(sys.modules, "recorder.gui",
+                        SimpleNamespace(run=lambda backend, **options: opened.append((backend, options)) or 0))
     backend = FakeBackend()
     assert main(["gui"], backend=backend) == 0
-    assert opened == [backend]
+    assert opened == [(backend, {"model_name": "base.en", "device": "cpu",
+                                 "compute_type": None, "language": "en"})]
 
 
 def test_gui_command_explains_a_missing_tkinter(monkeypatch, capsys):
@@ -163,3 +165,41 @@ def test_transcribe_missing_package_message_is_printed(tmp_path, capsys):
 
     assert main(["transcribe", str(audio)], backend=FakeBackend(), model_loader=loader) == 1
     assert "pip install faster-whisper" in capsys.readouterr().out
+
+
+def test_gui_command_passes_the_speech_settings(monkeypatch):
+    import sys
+
+    opened = []
+    monkeypatch.setitem(sys.modules, "recorder.gui",
+                        SimpleNamespace(run=lambda backend, **options: opened.append(options) or 0))
+    main(["gui", "--device", "cuda", "--model", "small.en", "--compute-type", "float16"],
+         backend=FakeBackend())
+    assert opened == [{"model_name": "small.en", "device": "cuda",
+                       "compute_type": "float16", "language": "en"}]
+
+
+def test_check_reports_cpu_and_gpu_separately(capsys):
+    def probe(model, device):
+        if device == "cpu":
+            return True, 0, "PROBE OK"
+        return False, -1073741819, "Windows fatal exception: access violation"
+
+    assert main(["check"], backend=FakeBackend(), probe_runner=probe) == 0
+    out = capsys.readouterr().out
+    assert "cpu" in out and "OK" in out
+    assert "cuda" in out and "FAILED" in out and "-1073741819" in out and "access violation" in out
+    assert "python -m recorder gui" in out
+    assert "requirements-gpu.txt" in out
+
+
+def test_check_recommends_the_gpu_when_it_works(capsys):
+    assert main(["check", "--model", "tiny.en"], backend=FakeBackend(),
+                probe_runner=lambda model, device: (True, 0, "PROBE OK")) == 0
+    assert "gui --device cuda" in capsys.readouterr().out
+
+
+def test_check_fails_when_nothing_works(capsys):
+    assert main(["check"], backend=FakeBackend(),
+                probe_runner=lambda model, device: (False, 1, "nope")) == 1
+    assert "Neither" in capsys.readouterr().out

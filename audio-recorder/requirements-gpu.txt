@@ -1,0 +1,3 @@
+-r requirements-transcribe.txt
+nvidia-cublas-cu12
+nvidia-cudnn-cu12==9.*     # ctranslate2 4.x needs CUDA 12 and cuDNN 9; Windows wheels exist for both

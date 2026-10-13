@@ -397,3 +397,29 @@ def test_buttons_are_disabled_while_a_file_is_transcribed(tmp_path):
     assert not any(snap.enabled.values())
     rig.ctrl._runner.run_all()
     assert rig.ctrl.snapshot().state is State.IDLE
+
+
+def test_speech_settings_reach_the_model_loader(tmp_path):
+    seen = []
+
+    def loader(*args):
+        seen.append(args)
+        return FakeModel()
+
+    ctrl = AppController(FakeBackend(rate=RATE), SyncRunner(), ask_save_target=lambda n: None,
+                         ask_open_file=lambda: make_audio(tmp_path), model_loader=loader,
+                         model_name="small.en", device="cuda", compute_type=None,
+                         out_base=tmp_path / "rec")
+    ctrl.transcribe_file()
+    assert seen == [("small.en", "cuda", None)]
+
+
+def test_a_missing_gpu_library_gets_a_plain_hint(tmp_path):
+    def loader(*args):
+        raise RuntimeError("Library cublas64_12.dll is not found or cannot be loaded")
+
+    rig = Rig(tmp_path, loader=loader, ask_open_file=lambda: make_audio(tmp_path))
+    rig.ctrl.transcribe_file()
+    snap = rig.ctrl.snapshot()
+    assert snap.message_kind == "error"
+    assert "requirements-gpu.txt" in snap.message and "--device cpu" in snap.message

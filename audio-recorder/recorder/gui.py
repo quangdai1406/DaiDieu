@@ -129,9 +129,13 @@ class App:
         messagebox.showerror("Something went wrong", f"{exc_type.__name__}: {exc}")
 
 
-def run(backend):
+def run(backend, model_name="base.en", device="cpu", compute_type=None, language="en"):
     root = tk.Tk()
     runner = ThreadRunner()
-    App(root, AppController(backend, runner, ask_save_target, ask_open_file=ask_open_file), runner)
+    controller = AppController(backend, runner, ask_save_target, ask_open_file=ask_open_file,
+                               model_name=model_name, device=device, compute_type=compute_type,
+                               language=language)
+    App(root, controller, runner)
+    root.title(f"Meeting Recorder - transcription: {model_name} on {device}")
     root.mainloop()
     return 0

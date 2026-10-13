@@ -15,7 +15,7 @@ from pathlib import Path
 
 from .mixer import export_mp3
 from .session import RecordingSession, unique_dir
-from .transcribe import SPEAKERS, load_model, write_transcripts
+from .transcribe import SPEAKERS, explain_error, load_model, write_transcripts
 from .transcribe import transcribe_file as transcribe_audio_file
 
 CONSENT_NOTE = ("Recording your microphone and speakers. Tell the other participants "
@@ -88,7 +88,7 @@ class ThreadRunner:
 class AppController:
     def __init__(self, backend, runner, ask_save_target, model_loader=load_model,
                  out_base="recordings", now=datetime.now, clock=time.monotonic,
-                 language="en", model_name="base.en", device="cpu", compute_type="int8",
+                 language="en", model_name="base.en", device="cpu", compute_type=None,
                  ask_open_file=None):
         self._backend = backend
         self._runner = runner
@@ -244,8 +244,7 @@ class AppController:
     def _on_transcribed(self, text, error):
         self._state = State.STOPPED
         if error is not None:
-            plain = str(error) if isinstance(error, SystemExit) else f"Transcription failed: {error}"
-            self._say(plain, "error")
+            self._say(explain_error(error), "error")
         elif not text.strip():
             self._say("No speech was found in the recording.")
         else:
@@ -276,8 +275,7 @@ class AppController:
     def _on_file_transcribed(self, back_to, result, error):
         self._state = back_to
         if error is not None:
-            plain = str(error) if isinstance(error, SystemExit) else f"Transcription failed: {error}"
-            self._say(plain, "error")
+            self._say(explain_error(error), "error")
             return
         txt, text = result
         if not text.strip():
