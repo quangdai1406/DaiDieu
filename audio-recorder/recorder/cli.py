@@ -4,10 +4,11 @@ import argparse
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
 
 from .mixer import export_mp3
 from .session import MODES, RecordingSession, unique_dir
-from .transcribe import SPEAKERS, load_model, write_transcripts
+from .transcribe import SPEAKERS, load_model, transcribe_file, write_transcripts
 
 CONSENT = ("Reminder: tell the other participants you are recording. Many places "
            "require everyone's consent.")
@@ -36,8 +37,9 @@ def build_parser():
                      help="transcribe locally after recording (meeting mode)")
     add_whisper_args(rec)
 
-    tr = sub.add_parser("transcribe", help="transcribe me.wav / others.wav in a session folder")
-    tr.add_argument("session_dir")
+    tr = sub.add_parser("transcribe", help="transcribe a recording folder, or any audio file")
+    tr.add_argument("target", help="a recording folder (me.wav / others.wav), or an audio file "
+                                   "such as .m4a, .mp3 or .wav")
     add_whisper_args(tr)
     return p
 
@@ -60,10 +62,18 @@ def default_waiter(session):
         print()
 
 
-def run_transcribe(session_dir, args, model_loader):
+def run_transcribe(target, args, model_loader):
+    target = Path(target)
+    if not target.exists():
+        print(f"Not found: {target}")
+        return 1
     model = model_loader(args.model, args.device, args.compute_type)
-    txt, srt = write_transcripts(model, session_dir, SPEAKERS, args.language)
+    if target.is_dir():
+        txt, srt = write_transcripts(model, target, SPEAKERS, args.language)
+    else:
+        txt, srt = transcribe_file(model, target, args.language)
     print(f"Transcript: {txt}\nSubtitles:  {srt}")
+    return 0
 
 
 def main(argv=None, *, backend=None, waiter=default_waiter, model_loader=load_model, now=datetime.now):
@@ -89,8 +99,7 @@ def main(argv=None, *, backend=None, waiter=default_waiter, model_loader=load_mo
         return 0
 
     if args.command == "transcribe":
-        run_transcribe(args.session_dir, args, model_loader)
-        return 0
+        return run_transcribe(args.target, args, model_loader)
 
     session_dir = unique_dir(args.out, f"{now():%y_%m%d_%H%M}_{args.mode}")
     mic, loopback = backend.open_sources(args.mic, args.loopback)

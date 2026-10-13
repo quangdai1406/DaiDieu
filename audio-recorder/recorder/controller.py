@@ -16,6 +16,7 @@ from pathlib import Path
 from .mixer import export_mp3
 from .session import RecordingSession, unique_dir
 from .transcribe import SPEAKERS, load_model, write_transcripts
+from .transcribe import transcribe_file as transcribe_audio_file
 
 CONSENT_NOTE = ("Recording your microphone and speakers. Tell the other participants "
                 "you are recording: many places require everyone's consent.")
@@ -30,7 +31,7 @@ class State(Enum):
     TRANSCRIBING = "transcribing"
 
 
-BUTTONS = ("record", "stop", "save", "transcribe")
+BUTTONS = ("record", "stop", "save", "transcribe", "transcribe_file")
 
 
 def format_elapsed(seconds):
@@ -87,10 +88,12 @@ class ThreadRunner:
 class AppController:
     def __init__(self, backend, runner, ask_save_target, model_loader=load_model,
                  out_base="recordings", now=datetime.now, clock=time.monotonic,
-                 language="en", model_name="base.en", device="cpu", compute_type="int8"):
+                 language="en", model_name="base.en", device="cpu", compute_type="int8",
+                 ask_open_file=None):
         self._backend = backend
         self._runner = runner
         self.ask_save_target = ask_save_target  # (default_name) -> (folder, want_mp3) | None
+        self.ask_open_file = ask_open_file  # () -> Path | None
         self._model_loader = model_loader
         self._out_base = Path(out_base)
         self._now = now
@@ -122,13 +125,13 @@ class AppController:
 
     def _is_enabled(self, button):
         if self._state is State.IDLE:
-            return button == "record"
+            return button in ("record", "transcribe_file")
         if self._state is State.RECORDING:
             return button == "stop"
         if self._state is State.STOPPED:
             if button == "transcribe":
                 return self._has_tracks()
-            return button in ("record", "save")
+            return button in ("record", "save", "transcribe_file")
         return False
 
     def _has_tracks(self):
@@ -227,13 +230,16 @@ class AppController:
         session_dir = self._session_dir
 
         def work():
-            if self._model is None:
-                self._model = self._model_loader(*self._model_args)
-            txt, _srt = write_transcripts(self._model, session_dir, SPEAKERS, self._language)
+            txt, _srt = write_transcripts(self._load_model(), session_dir, SPEAKERS, self._language)
             return txt.read_text(encoding="utf-8")
 
         self._runner.submit(work, self._on_transcribed)
         return True
+
+    def _load_model(self):
+        if self._model is None:
+            self._model = self._model_loader(*self._model_args)
+        return self._model
 
     def _on_transcribed(self, text, error):
         self._state = State.STOPPED
@@ -246,6 +252,39 @@ class AppController:
             self._transcript = text
             self._say("Transcript saved as transcript.txt and transcript.srt "
                       "in the recording folder.", "ok")
+
+    def transcribe_file(self):
+        """Transcribe an audio file chosen by the user; the current recording stays as it is."""
+        if self._state not in (State.IDLE, State.STOPPED) or self.ask_open_file is None:
+            return False
+        chosen = self.ask_open_file()
+        if not chosen:
+            self._say("No file chosen.")
+            return False
+        audio, back_to = Path(chosen), self._state
+        self._state = State.TRANSCRIBING
+        self._say(f"Transcribing {audio.name}... The first time, the speech model is downloaded. "
+                  "A long file can take about as long as the audio itself. Keep this window open.")
+
+        def work():
+            txt, _srt = transcribe_audio_file(self._load_model(), audio, self._language)
+            return txt, txt.read_text(encoding="utf-8")
+
+        self._runner.submit(work, lambda result, error: self._on_file_transcribed(back_to, result, error))
+        return True
+
+    def _on_file_transcribed(self, back_to, result, error):
+        self._state = back_to
+        if error is not None:
+            plain = str(error) if isinstance(error, SystemExit) else f"Transcription failed: {error}"
+            self._say(plain, "error")
+            return
+        txt, text = result
+        if not text.strip():
+            self._say("No speech was found in that file.")
+            return
+        self._transcript = text
+        self._say(f"Transcript saved next to the file: {txt.name}", "ok")
 
     def shutdown(self):
         """Call when the window closes: never lose a recording in progress."""

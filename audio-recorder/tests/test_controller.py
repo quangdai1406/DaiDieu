@@ -33,7 +33,7 @@ def wait_for(condition, timeout=3.0):
 
 
 class Rig:
-    def __init__(self, tmp_path, runner=None, loader=None):
+    def __init__(self, tmp_path, runner=None, loader=None, ask_open_file=None):
         self.clock = FakeClock(1000.0)
         self.backend = FakeBackend(rate=RATE)
         self.loader_calls = 0
@@ -44,7 +44,7 @@ class Rig:
 
         self.ctrl = AppController(
             self.backend, runner or SyncRunner(),
-            ask_save_target=lambda name: None,
+            ask_save_target=lambda name: None, ask_open_file=ask_open_file,
             model_loader=loader or default_loader,
             out_base=tmp_path / "rec", now=lambda: datetime(2026, 10, 13, 9, 5),
             clock=self.clock)
@@ -68,7 +68,8 @@ def rig(tmp_path):
 def test_initial_state_only_record_is_enabled(rig):
     snap = rig.ctrl.snapshot()
     assert snap.state is State.IDLE
-    assert snap.enabled == {"record": True, "stop": False, "save": False, "transcribe": False}
+    assert snap.enabled == {"record": True, "stop": False, "save": False, "transcribe": False,
+                            "transcribe_file": True}
     assert snap.transcript == ""
 
 
@@ -76,7 +77,8 @@ def test_record_starts_a_session_and_enables_only_stop(rig, tmp_path):
     assert rig.ctrl.record()
     snap = rig.ctrl.snapshot()
     assert snap.state is State.RECORDING
-    assert snap.enabled == {"record": False, "stop": True, "save": False, "transcribe": False}
+    assert snap.enabled == {"record": False, "stop": True, "save": False, "transcribe": False,
+                            "transcribe_file": False}
     assert snap.session_dir == tmp_path / "rec" / "26_1013_0905_meeting"
     assert "consent" in snap.message
     assert rig.backend.mic.started and rig.backend.loopback.started
@@ -105,7 +107,8 @@ def test_stop_finishes_files_and_enables_save_and_transcribe(rig):
     rig.record_and_stop()
     snap = rig.ctrl.snapshot()
     assert snap.state is State.STOPPED
-    assert snap.enabled == {"record": True, "stop": False, "save": True, "transcribe": True}
+    assert snap.enabled == {"record": True, "stop": False, "save": True, "transcribe": True,
+                            "transcribe_file": True}
     assert snap.elapsed == pytest.approx(1.0)
     for name in ("me.wav", "others.wav", "mix.wav"):
         assert (snap.session_dir / name).exists()
@@ -310,3 +313,87 @@ def test_format_elapsed():
     assert format_elapsed(0) == "0:00:00"
     assert format_elapsed(65.9) == "0:01:05"
     assert format_elapsed(3725) == "1:02:05"
+
+
+# ---- transcribing an external audio file ------------------------------------------
+
+
+def make_audio(tmp_path, name="Voice 261013_093023.m4a"):
+    audio = tmp_path / name
+    audio.write_bytes(b"")
+    return audio
+
+
+def test_transcribe_file_works_without_a_recording(rig, tmp_path):
+    audio = make_audio(tmp_path)
+    rig.ctrl.ask_open_file = lambda: audio
+    assert rig.ctrl.transcribe_file()
+    snap = rig.ctrl.snapshot()
+    assert snap.state is State.IDLE
+    assert snap.transcript == "[00:00:00] from them\n"
+    assert snap.message_kind == "ok"
+    assert "Voice 261013_093023.transcript.txt" in snap.message
+    assert (tmp_path / "Voice 261013_093023.transcript.txt").exists()
+    assert (tmp_path / "Voice 261013_093023.transcript.srt").exists()
+    assert snap.enabled["transcribe_file"]
+
+
+def test_transcribe_file_leaves_the_current_recording_alone(rig, tmp_path):
+    rig.record_and_stop()
+    session_dir = rig.ctrl.snapshot().session_dir
+    rig.ctrl.ask_open_file = lambda: make_audio(tmp_path)
+    assert rig.ctrl.transcribe_file()
+    snap = rig.ctrl.snapshot()
+    assert snap.state is State.STOPPED
+    assert snap.session_dir == session_dir
+    assert snap.enabled["save"] and snap.enabled["transcribe"]
+
+
+def test_cancelling_the_file_dialog_changes_nothing(rig):
+    rig.ctrl.ask_open_file = lambda: None
+    assert not rig.ctrl.transcribe_file()
+    snap = rig.ctrl.snapshot()
+    assert snap.state is State.IDLE
+    assert snap.message_kind == "info"
+    assert "No file" in snap.message
+
+
+def test_transcribe_file_is_not_available_while_recording(rig, tmp_path):
+    rig.ctrl.ask_open_file = lambda: make_audio(tmp_path)
+    rig.record_one_second()
+    assert not rig.ctrl.snapshot().enabled["transcribe_file"]
+    assert not rig.ctrl.transcribe_file()
+
+
+def test_transcribe_file_without_a_picker_does_nothing(rig):
+    assert not rig.ctrl.transcribe_file()
+
+
+def test_transcribe_file_shows_a_missing_file_plainly(rig, tmp_path):
+    rig.ctrl.ask_open_file = lambda: tmp_path / "gone.m4a"
+    rig.ctrl.transcribe_file()
+    snap = rig.ctrl.snapshot()
+    assert snap.state is State.IDLE
+    assert snap.message_kind == "error"
+    assert "not found" in snap.message.lower()
+
+
+def test_transcribe_file_with_missing_whisper_shows_the_install_hint(tmp_path):
+    def loader(*args):
+        raise SystemExit("Transcription needs faster-whisper: pip install faster-whisper")
+
+    rig = Rig(tmp_path, loader=loader, ask_open_file=lambda: make_audio(tmp_path))
+    rig.ctrl.transcribe_file()
+    snap = rig.ctrl.snapshot()
+    assert snap.state is State.IDLE
+    assert "faster-whisper" in snap.message
+
+
+def test_buttons_are_disabled_while_a_file_is_transcribed(tmp_path):
+    rig = Rig(tmp_path, runner=ManualRunner(), ask_open_file=lambda: make_audio(tmp_path))
+    rig.ctrl.transcribe_file()
+    snap = rig.ctrl.snapshot()
+    assert snap.state is State.TRANSCRIBING
+    assert not any(snap.enabled.values())
+    rig.ctrl._runner.run_all()
+    assert rig.ctrl.snapshot().state is State.IDLE

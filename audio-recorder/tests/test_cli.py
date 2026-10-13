@@ -114,3 +114,20 @@ def test_gui_command_explains_a_missing_tkinter(monkeypatch, capsys):
     monkeypatch.setitem(sys.modules, "recorder.gui", None)  # makes the import fail
     assert main(["gui"], backend=FakeBackend()) == 1
     assert "tkinter" in capsys.readouterr().out
+
+
+def test_transcribe_subcommand_accepts_an_audio_file(tmp_path, capsys):
+    audio = tmp_path / "Voice 261013_093023.m4a"
+    audio.write_bytes(b"")
+    code = main(["transcribe", str(audio)], backend=FakeBackend(), model_loader=lambda *a: FakeModel())
+    out = capsys.readouterr().out
+    assert code == 0
+    assert (tmp_path / "Voice 261013_093023.transcript.txt").read_text() == "[00:00:00] from them\n"
+    assert "Voice 261013_093023.transcript.txt" in out
+
+
+def test_transcribe_subcommand_reports_a_missing_path(tmp_path, capsys):
+    code = main(["transcribe", str(tmp_path / "nope.m4a")], backend=FakeBackend(),
+                model_loader=lambda *a: FakeModel())
+    assert code == 1
+    assert "not found" in capsys.readouterr().out.lower()

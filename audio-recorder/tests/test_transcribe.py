@@ -1,7 +1,9 @@
 from types import SimpleNamespace
 
+import pytest
+
 from recorder.transcribe import (Segment, coalesce, format_srt_time, format_clock,
-                                 merge_segments, to_srt, to_txt, transcribe_track,
+                                 merge_segments, to_srt, to_txt, transcribe_file, transcribe_track,
                                  write_transcripts)
 
 
@@ -92,3 +94,41 @@ def test_write_transcripts_skips_missing_tracks(tmp_path):
     model = FakeModel([SimpleNamespace(start=0.0, end=1.0, text="only me")])
     txt, _ = write_transcripts(model, tmp_path, {"me": "Me", "others": "Others"})
     assert txt.read_text() == "[00:00:00] Me: only me\n"
+
+
+def test_txt_and_srt_omit_an_empty_speaker_label():
+    segs = [seg(5, 6, "", "hello")]
+    assert to_txt(segs) == "[00:00:05] hello\n"
+    assert to_srt(segs) == "1\n00:00:05,000 --> 00:00:06,000\nhello\n\n"
+
+
+def test_transcribe_file_writes_next_to_the_source(tmp_path):
+    audio = tmp_path / "Voice 261013_093023.m4a"
+    audio.write_bytes(b"")
+    model = FakeModel([SimpleNamespace(start=0.0, end=2.0, text=" hello there "),
+                       SimpleNamespace(start=2.5, end=4.0, text="second part")])
+    txt, srt = transcribe_file(model, audio, language="en")
+    assert txt == tmp_path / "Voice 261013_093023.transcript.txt"
+    assert srt == tmp_path / "Voice 261013_093023.transcript.srt"
+    assert txt.read_text(encoding="utf-8") == "[00:00:00] hello there second part\n"
+    path, kwargs = model.calls[0]
+    assert path == str(audio)
+    assert kwargs["language"] == "en"
+
+
+def test_transcribe_file_never_overwrites_an_earlier_transcript(tmp_path):
+    audio = tmp_path / "a.m4a"
+    audio.write_bytes(b"")
+    model = FakeModel([SimpleNamespace(start=0.0, end=1.0, text="hi")])
+    first_txt, _ = transcribe_file(model, audio)
+    first_txt.write_text("my edits", encoding="utf-8")
+    model._segments = [SimpleNamespace(start=0.0, end=1.0, text="hi")]
+    second_txt, second_srt = transcribe_file(model, audio)
+    assert second_txt == tmp_path / "a.transcript_2.txt"
+    assert second_srt == tmp_path / "a.transcript_2.srt"
+    assert first_txt.read_text(encoding="utf-8") == "my edits"
+
+
+def test_transcribe_file_reports_a_missing_file(tmp_path):
+    with pytest.raises(FileNotFoundError, match="not found"):
+        transcribe_file(FakeModel([]), tmp_path / "nope.m4a")
