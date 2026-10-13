@@ -131,3 +131,35 @@ def test_transcribe_subcommand_reports_a_missing_path(tmp_path, capsys):
                 model_loader=lambda *a: FakeModel())
     assert code == 1
     assert "not found" in capsys.readouterr().out.lower()
+
+
+def test_transcribe_prints_progress_so_it_never_looks_frozen(tmp_path, capsys):
+    audio = tmp_path / "Voice 1.m4a"
+    audio.write_bytes(b"")
+    main(["transcribe", str(audio)], backend=FakeBackend(), model_loader=lambda *a: FakeModel())
+    out = capsys.readouterr().out
+    assert "Loading the speech model 'base.en'" in out
+    assert "Transcribing Voice 1.m4a" in out
+    assert out.index("Loading the speech model") < out.index("Transcribing") < out.index("Transcript:")
+
+
+def test_transcribe_failure_is_reported_not_silent(tmp_path, capsys):
+    audio = tmp_path / "Voice 1.m4a"
+    audio.write_bytes(b"")
+
+    def loader(*args):
+        raise RuntimeError("boom")
+
+    assert main(["transcribe", str(audio)], backend=FakeBackend(), model_loader=loader) == 1
+    assert "Transcription failed: boom" in capsys.readouterr().out
+
+
+def test_transcribe_missing_package_message_is_printed(tmp_path, capsys):
+    audio = tmp_path / "Voice 1.m4a"
+    audio.write_bytes(b"")
+
+    def loader(*args):
+        raise SystemExit("Transcription needs faster-whisper: pip install faster-whisper")
+
+    assert main(["transcribe", str(audio)], backend=FakeBackend(), model_loader=loader) == 1
+    assert "pip install faster-whisper" in capsys.readouterr().out

@@ -67,11 +67,19 @@ def run_transcribe(target, args, model_loader):
     if not target.exists():
         print(f"Not found: {target}")
         return 1
-    model = model_loader(args.model, args.device, args.compute_type)
-    if target.is_dir():
-        txt, srt = write_transcripts(model, target, SPEAKERS, args.language)
-    else:
-        txt, srt = transcribe_file(model, target, args.language)
+    try:
+        print(f"Loading the speech model '{args.model}' (the first run downloads it, "
+              "which can take several minutes)...", flush=True)
+        model = model_loader(args.model, args.device, args.compute_type)
+        print(f"Transcribing {target.name}... (a long file can take about as long as the audio)",
+              flush=True)
+        if target.is_dir():
+            txt, srt = write_transcripts(model, target, SPEAKERS, args.language)
+        else:
+            txt, srt = transcribe_file(model, target, args.language)
+    except (Exception, SystemExit) as exc:  # noqa: BLE001 - always say what went wrong
+        print(str(exc) if isinstance(exc, SystemExit) else f"Transcription failed: {exc}")
+        return 1
     print(f"Transcript: {txt}\nSubtitles:  {srt}")
     return 0
 
