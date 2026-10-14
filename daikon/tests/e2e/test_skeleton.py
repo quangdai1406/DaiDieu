@@ -335,3 +335,11 @@ def test_attachments_are_flagged_and_never_opened(tmp_path: Path) -> None:
     r.pipe.poll()
     header = next(m for m in r.mailbox.sent if m.to == [DAI]).body.partition("---- model summary")[0]
     assert "has_attachments" in header
+
+
+def test_the_worker_asks_the_model_for_schema_constrained_output(tmp_path: Path) -> None:
+    r = rig(tmp_path)
+    r.inbound("m1", "bob@example.org", "Hello")
+    r.pipe.poll()
+    (schema,) = r.gateway.schemas
+    assert schema is not None and "draft_body" in schema["required"]

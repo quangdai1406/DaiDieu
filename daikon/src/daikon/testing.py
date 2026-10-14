@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
@@ -47,9 +48,18 @@ class FakeGateway:
     def __init__(self, reply: dict[str, Any] | None = None) -> None:
         self.reply = dict(reply if reply is not None else self.DEFAULT)
         self.calls: list[tuple[str, str]] = []
+        self.schemas: list[Mapping[str, Any] | None] = []
 
-    def complete_json(self, role: str, system: str, user: str) -> dict[str, Any]:
+    def complete_json(
+        self,
+        role: str,
+        system: str,
+        user: str,
+        schema: Mapping[str, Any] | None = None,
+        data_label: str = "normal",
+    ) -> dict[str, Any]:
         self.calls.append((system, user))
+        self.schemas.append(schema)
         return dict(self.reply)
 
 

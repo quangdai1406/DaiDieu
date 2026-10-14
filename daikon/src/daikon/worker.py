@@ -6,7 +6,7 @@ import re
 
 from daikon.audit import AuditLog
 from daikon.clock import Clock
-from daikon.drafts import content_hash, reply_subject, validate_draft
+from daikon.drafts import DRAFT_SCHEMA, content_hash, reply_subject, validate_draft
 from daikon.gateway.base import Gateway
 from daikon.graph.node import Node
 from daikon.graph.store import GraphStore
@@ -22,7 +22,7 @@ class Worker:
         self._gateway, self._store, self._clock, self._audit = gateway, store, clock, audit
 
     def draft_reply(self, msg: InboundEmail, u: Untrusted, recipient: str) -> Node:
-        raw = self._gateway.complete_json("draft", DRAFT_SYSTEM, wrap_untrusted(u))
+        raw = self._gateway.complete_json("draft", DRAFT_SYSTEM, wrap_untrusted(u), DRAFT_SCHEMA)
         data = validate_draft(raw)
         body = _CONTROL.sub("", data["draft_body"]).strip()
         recipients = [recipient]  # decided by code (the From address), never by the model
