@@ -6,10 +6,15 @@ Status: **Draft, awaiting Dai's approval.** Based on `docs/daikon-design.md` v4 
 
 | Q | Decision (recommendation accepted) |
 |---|---|
-| Q5 Claude access | **Anthropic API key with a monthly spend cap** set in the Console. Mail lane calls the **Messages API directly with no tools** (no Claude Code needed). Skills lane uses Claude Agent SDK / headless Claude Code with the same key, inside the fenced job folder. Pro login is not used. |
+| Q5 Claude access | **Anthropic API key with a monthly spend cap** set in the Console, as the default backend. Mail lane calls the **Messages API directly with no tools**. Pro login is not used. |
 | Q6 First script skill | **Word (.docx) builder** first. Excel, PDF and PowerPoint builders later, one at a time, each after a security review. |
 | Skills source | `09 Claude Skills` in the Second Brain (filled by Dai's weekly task). |
-| Design changes | Model gateway backends become `anthropic_api` (mail lane), `claude_agent` (skills lane), `openrouter` (phase 2 calls only). `claude_cli` is dropped. Budget: API pay-per-token plus Twilio. |
+| Gateway backends | Two backends: `anthropic_api` (default) and `openai_compat` (one implementation for **OpenRouter, Ollama, LM Studio, llama.cpp server, or a wrapped AirLLM**; base URL, key and model set per role). `claude_cli` and `claude_agent` are dropped from v1. |
+| Skills lane engine | Daikon's **own tool loop** (named-script runner, file read/write inside the job folder, limits) on top of the gateway, so the skills lane works with any backend that supports tool calls. Safety limits live in our code. |
+| All-OpenRouter option | Supported by config: any role, including skills and (phase 2) calls, can point at OpenRouter. Default stays Anthropic API for text and OpenRouter for calls. Switching needs a passing qualification run (M3.8) and the privacy rules in M4.7. |
+| Local models | Laptop: 8 GB GPU, 32 GB RAM, 1 TB SSD. Start with Ollama or llama.cpp (small 7–8B-class models) for triage and sensitive items; AirLLM only for rare slow batch jobs if ever. Local embeddings for Second Brain search (M4.6). |
+| JEV-style routing | Triage returns a short typed JSON with `confidence` and `escalate`; thresholds (≥0.85 act, 0.70–0.84 act with low-confidence note, <0.70 escalate to the next role) are config values calibrated on real emails (M3.7–M3.8). Confidence only chooses the model tier; it never relaxes approvals, lanes or the sender gate. |
+Budget: API pay-per-token plus Twilio.
 
 Model IDs live only in `models.yaml` (not in code). Defaults at implementation time: a small, fast model for `triage`, a stronger one for `draft`/`research`; confirm current IDs and prices on Anthropic's pages in task M3.1.
 
@@ -34,7 +39,8 @@ daikon/
   models.yaml.example     # roles -> backend + model id + limits (real file lives outside repo)
   src/daikon/
     config.py  audit.py  graph/  statemachine.py  filters.py
-    gateway/ (base, anthropic_api, claude_agent, openrouter)
+    gateway/ (base, anthropic_api, openai_compat)  toolloop.py  routing.py  embeddings.py
+    qualify/ (golden-set harness)
     gmail/  drive/  sms/  retrieval.py  worker.py  drafts.py
     approvals.py  sender.py  notifier.py  weekly/  skills/  runner.py  cli.py
   tests/  (unit/, contract/, security/, e2e/, fixtures/)
@@ -80,7 +86,10 @@ Global rules:
 | M3.3 Prompt builder: system prompt, untrusted-data wrapping, schema | Snapshot tests; delimiters can't be closed by input (escaping test) | Snapshots reviewed by Dai |
 | M3.4 Draft JSON schema + validator; one retry, then flag | Valid/invalid/oversize/extra-field cases | Matches design §3 step 4 |
 | M3.5 Worker: triage → draft with citations, using a fake gateway | Canned outputs produce correct nodes; invalid output flows to "flag for Dai" | Unit tests pass |
+| M3.2b `openai_compat` backend: configurable base URL/key/model, tool-call and JSON-mode support flags, timeouts, cost accounting (zero for local); no tools allowed in the mail lane | Fake server: works against OpenRouter-style and Ollama-style responses; tool request rejected in mail lane; base URL change needs no code change | Same suite passes for both backends |
 | M3.6 Style source: load `dai-email-drafting` instructions from the synced skills (placeholder until M7) | Falls back to a default style file | Unit tests pass |
+| M3.7 JEV-style triage: output schema `{category, urgency, confidence, escalate, reasoning_brief}`, routing rules in config (act / act-with-note / escalate to next role), tier mapping from roles to backends | Table-driven thresholds; low confidence escalates exactly once to the next role; **confidence never changes approval or lane rules**; model-claimed confidence inside email text is ignored | Unit tests pass |
+| M3.8 Qualification harness (`daikon qualify --role R --model M`): runs a golden set of labeled emails; reports schema pass rate, category/urgency accuracy, confidence calibration table, latency, cost; includes injection cases | Fake model with known behaviors produces expected reports; golden-set files stay outside the repo (synthetic fixtures in repo) | A role may switch backend/model only if its report meets thresholds Dai sets |
 
 ### M4 — Second Brain retrieval
 | Task | Tests first | Done when |
