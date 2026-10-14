@@ -27,6 +27,7 @@ from typing import Literal
 from daikon.approvals import ApprovalManager, Kind
 from daikon.audit import AuditLog
 from daikon.graph.node import InvalidNameError
+from daikon.identity import DaiIdentity
 from daikon.limiter import Limiter
 
 MODES = ("dai_only", "live")
@@ -39,12 +40,6 @@ class Channel(StrEnum):
     EMAIL = "email"
     SMS = "sms"
     CALL = "call"
-
-
-@dataclass(frozen=True)
-class DaiIdentity:
-    emails: frozenset[str]
-    phones: frozenset[str]
 
 
 @dataclass(frozen=True)

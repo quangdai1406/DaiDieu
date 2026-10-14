@@ -8,6 +8,7 @@ pytestmark = pytest.mark.unit
 
 GOOD = """
 data_dir: {data}
+identity: {{emails: [dai@example.com]}}
 roles:
   triage: {{backend: anthropic_api, model: small-model, data_class: cloud}}
   draft:  {{backend: anthropic_api, model: big-model,   data_class: cloud}}
@@ -44,7 +45,8 @@ def test_unknown_data_class_rejected(tmp_path: Path) -> None:
 
 
 def test_missing_required_role_rejected(tmp_path: Path) -> None:
-    text = "data_dir: x\nroles: {triage: {backend: anthropic_api, model: m, data_class: cloud}}\n"
+    text = ("data_dir: x\nidentity: {emails: [dai@example.com]}\n"
+            "roles: {triage: {backend: anthropic_api, model: m, data_class: cloud}}\n")
     with pytest.raises(ConfigError, match="draft"):
         load_config(write(tmp_path, text))
 
@@ -71,6 +73,7 @@ def test_default_data_dir_is_under_home(tmp_path: Path, monkeypatch: pytest.Monk
 
 ROLE_FULL = """
 data_dir: {data}
+identity: {{emails: [dai@example.com]}}
 roles:
   triage:
     backend: anthropic_api
@@ -103,4 +106,58 @@ def test_unknown_effort_is_rejected(tmp_path: Path) -> None:
 def test_bad_prices_are_rejected(tmp_path: Path, bad: str) -> None:
     text = ROLE_FULL.format(data=tmp_path).replace("input: 0.10, output: 0.50, cache_read: 0.01", bad)
     with pytest.raises(ConfigError, match="price"):
+        load_config(write(tmp_path, text))
+
+
+APP_CFG = """
+data_dir: {data}
+identity:
+  emails: [Dai@Example.com, dai.work@example.com]
+  phones: ["+1 (555) 000-1111"]
+outbound_mode: dai_only
+second_brain_root_id: 1j8kRB_OiGRirovIVL6gOfjIIhge0ktBk
+style_file: style.md
+roles:
+  triage: {{backend: anthropic_api, model: small-model, data_class: cloud}}
+  draft:  {{backend: anthropic_api, model: big-model,   data_class: cloud}}
+"""
+
+
+def test_app_settings_are_parsed_and_normalized(tmp_path: Path) -> None:
+    cfg = load_config(write(tmp_path, APP_CFG.format(data=tmp_path)))
+    assert cfg.identity.emails == frozenset({"dai@example.com", "dai.work@example.com"})
+    assert cfg.identity.phones == frozenset({"+15550001111"})
+    assert cfg.outbound_mode == "dai_only" and cfg.dai_email == "dai@example.com"
+    assert cfg.second_brain_root_id == "1j8kRB_OiGRirovIVL6gOfjIIhge0ktBk"
+    assert cfg.style_file == tmp_path / "style.md"
+
+
+def test_identity_is_required_and_needs_an_email(tmp_path: Path) -> None:
+    without = GOOD.format(data=tmp_path).replace("identity: {emails: [dai@example.com]}\n", "")
+    with pytest.raises(ConfigError, match="identity"):
+        load_config(write(tmp_path, without))
+    text = APP_CFG.format(data=tmp_path).replace("[Dai@Example.com, dai.work@example.com]", "[]")
+    with pytest.raises(ConfigError, match="identity"):
+        load_config(write(tmp_path, text))
+
+
+def test_outbound_mode_defaults_to_the_safe_value_and_rejects_unknown(tmp_path: Path) -> None:
+    text = APP_CFG.format(data=tmp_path).replace("outbound_mode: dai_only\n", "")
+    assert load_config(write(tmp_path, text)).outbound_mode == "dai_only"
+    bad = APP_CFG.format(data=tmp_path).replace("dai_only", "yolo")
+    with pytest.raises(ConfigError, match="outbound_mode"):
+        load_config(write(tmp_path, bad))
+
+
+def test_second_brain_and_style_are_optional(tmp_path: Path) -> None:
+    text = (APP_CFG.format(data=tmp_path)
+            .replace("second_brain_root_id: 1j8kRB_OiGRirovIVL6gOfjIIhge0ktBk\n", "")
+            .replace("style_file: style.md\n", ""))
+    cfg = load_config(write(tmp_path, text))
+    assert cfg.second_brain_root_id is None and cfg.style_file is None
+
+
+def test_bad_phone_numbers_are_rejected(tmp_path: Path) -> None:
+    text = APP_CFG.format(data=tmp_path).replace("+1 (555) 000-1111", "call me")
+    with pytest.raises(ConfigError, match="phone"):
         load_config(write(tmp_path, text))

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,7 @@ from typing import Any
 import yaml
 
 from daikon.guard import is_secret_key
+from daikon.identity import DaiIdentity
 
 BACKENDS = frozenset({"anthropic_api", "openai_compat"})
 DATA_CLASSES = frozenset({"local", "allowlisted", "cloud"})
@@ -57,6 +59,11 @@ class Config:
     data_dir: Path
     roles: dict[str, RoleConfig]
     limits: Limits
+    identity: DaiIdentity
+    dai_email: str
+    outbound_mode: str = "dai_only"
+    second_brain_root_id: str | None = None
+    style_file: Path | None = None
 
 
 def _reject_secret_keys(node: Any, path: str = "") -> None:
@@ -104,6 +111,21 @@ def _price(role: str, raw: Any) -> Price | None:
     return price
 
 
+def _identity(raw: Any) -> tuple[DaiIdentity, str]:
+    if not isinstance(raw, dict) or not raw.get("emails"):
+        raise ConfigError("identity.emails is required (Dai's own addresses)")
+    emails = [str(e).strip().lower() for e in raw["emails"]]
+    if any("@" not in e for e in emails):
+        raise ConfigError("identity.emails must be email addresses")
+    phones = set()
+    for p in raw.get("phones") or []:
+        cleaned = re.sub(r"[\s\-().]", "", str(p))
+        if not re.fullmatch(r"\+\d{8,15}", cleaned):
+            raise ConfigError(f"identity.phones: bad phone number {p!r} (use +countrycode...)")
+        phones.add(cleaned)
+    return DaiIdentity(frozenset(emails), frozenset(phones)), emails[0]
+
+
 def load_config(path: Path) -> Config:
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     if not isinstance(raw, dict):
@@ -116,4 +138,13 @@ def load_config(path: Path) -> Config:
     roles = {name: _role(name, body) for name, body in roles_raw.items()}
     data_dir = Path(raw["data_dir"]) if raw.get("data_dir") else Path.home() / "daikon-data"
     limits = Limits(**(raw.get("limits") or {}))
-    return Config(data_dir=data_dir, roles=roles, limits=limits)
+    identity, dai_email = _identity(raw.get("identity"))
+    mode = raw.get("outbound_mode", "dai_only")
+    if mode not in ("dai_only", "live"):
+        raise ConfigError(f"outbound_mode must be dai_only or live, got {mode!r}")
+    style = raw.get("style_file")
+    return Config(
+        data_dir=data_dir, roles=roles, limits=limits, identity=identity, dai_email=dai_email,
+        outbound_mode=mode, second_brain_root_id=raw.get("second_brain_root_id") or None,
+        style_file=(data_dir / str(style)) if style else None,
+    )

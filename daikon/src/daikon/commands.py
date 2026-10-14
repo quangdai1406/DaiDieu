@@ -6,8 +6,8 @@ import re
 from dataclasses import dataclass
 from email.utils import parseaddr
 
+from daikon.identity import DaiIdentity
 from daikon.mail import InboundEmail
-from daikon.policy import DaiIdentity
 from daikon.untrusted import Untrusted
 
 _PAUSE = re.compile(r"^PAUSE$", re.IGNORECASE)

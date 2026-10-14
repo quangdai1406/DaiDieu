@@ -23,12 +23,13 @@ from daikon.gateway.anthropic_api import (
     TruncatedOutputError,
 )
 from daikon.graph.store import GraphStore
+from daikon.identity import DaiIdentity
 from daikon.limiter import Limiter, default_rules
 from daikon.mail import AuthResults, InboundEmail
 from daikon.pause import PauseSwitch
 from daikon.people import PersonBook
 from daikon.pipeline import Pipeline
-from daikon.policy import DaiIdentity, OutboundPolicy
+from daikon.policy import OutboundPolicy
 from daikon.retrieval import Retriever
 from daikon.testing import FakeGateway, FakeMailbox, FakeMessenger
 

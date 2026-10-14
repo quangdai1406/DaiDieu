@@ -5,6 +5,18 @@
 # (cached in the API reference). Check them again before relying on the monthly cap.
 # data_dir: C:\Users\YOU\daikon-data   # optional; defaults to your user folder\daikon-data
 
+# Dai's own identities: the only addresses/numbers that can command Daikon.
+identity:
+  emails: [dai@example.com]
+  phones: ["+15550001111"]
+
+# dai_only: Daikon sends only to Dai (shadow mode). Switch to "live" only after gates G1 and G2.
+outbound_mode: dai_only
+
+# The Second Brain folder in Google Drive (omit to run without it). Optional voice guide file.
+# second_brain_root_id: 1j8kRB_OiGRirovIVL6gOfjIIhge0ktBk
+# style_file: style.md
+
 roles:
   # Cheap, fast classification and summaries (small prompts, short answers).
   triage:

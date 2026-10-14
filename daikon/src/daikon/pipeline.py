@@ -20,11 +20,12 @@ from daikon.gateway.anthropic_api import GatewayCapError, GatewayError
 from daikon.gateway.base import Gateway
 from daikon.graph.node import Node
 from daikon.graph.store import GraphStore
+from daikon.identity import DaiIdentity
 from daikon.mail import AuthResults, InboundEmail, Mailbox
 from daikon.notifier import Notifier
 from daikon.pause import PauseSwitch
 from daikon.people import PersonBook
-from daikon.policy import DaiIdentity, OutboundPolicy
+from daikon.policy import OutboundPolicy
 from daikon.retrieval import Retriever
 from daikon.sender import Sender
 from daikon.senders import analyze_sender

@@ -12,8 +12,9 @@ from daikon.audit import AuditLog, verify
 from daikon.clock import FakeClock
 from daikon.config import Limits
 from daikon.graph.store import GraphStore
+from daikon.identity import DaiIdentity
 from daikon.limiter import Limiter, default_rules
-from daikon.policy import Channel, DaiIdentity, OutboundAction, OutboundPolicy
+from daikon.policy import Channel, OutboundAction, OutboundPolicy
 
 pytestmark = [pytest.mark.unit, pytest.mark.security]
 T0 = datetime(2026, 10, 14, 9, 0, tzinfo=UTC)
