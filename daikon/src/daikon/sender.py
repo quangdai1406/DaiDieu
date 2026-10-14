@@ -6,14 +6,15 @@ from daikon.approvals import ApprovalManager
 from daikon.drafts import content_hash
 from daikon.graph.store import GraphStore
 from daikon.mail import Mailbox
+from daikon.people import PersonBook
 from daikon.policy import Channel, OutboundAction, OutboundPolicy
 
 
 class Sender:
     def __init__(self, mailbox: Mailbox, store: GraphStore, approvals: ApprovalManager,
-                 policy: OutboundPolicy) -> None:
+                 policy: OutboundPolicy, people: PersonBook) -> None:
         self._mailbox, self._store = mailbox, store
-        self._approvals, self._policy = approvals, policy
+        self._approvals, self._policy, self._people = approvals, policy, people
 
     def send(self, request_id: str) -> bool:
         req = self._approvals.get(request_id)
@@ -38,6 +39,8 @@ class Sender:
             self._approvals.mark_failed(request_id, "send_error")
             return False
         self._approvals.mark_sent(request_id)
+        for recipient in recipients:
+            self._people.mark_contacted(recipient)
         draft.status = "sent"
         self._store.write(draft)
         return True

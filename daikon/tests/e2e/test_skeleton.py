@@ -16,6 +16,7 @@ from daikon.config import Limits
 from daikon.graph.store import GraphStore
 from daikon.limiter import Limiter, default_rules
 from daikon.mail import AuthResults, InboundEmail
+from daikon.people import PersonBook
 from daikon.pipeline import Pipeline
 from daikon.policy import DaiIdentity, OutboundPolicy
 from daikon.testing import FakeGateway, FakeMailbox
@@ -35,12 +36,14 @@ class Rig:
     approvals: ApprovalManager
     store: GraphStore
     root: Path
+    people: PersonBook
 
     def inbound(self, id_: str, frm: str, text: str, auth: AuthResults = PASS, subject: str = "Hi",
-                html: str | None = None) -> None:
+                html: str | None = None, reply_to: str | None = None) -> None:
         self.mailbox.inbox.append(InboundEmail(
             id=id_, thread_id=f"t-{id_}", from_addr=frm, to=("daikon@example.com",),
-            subject=subject, text=text, html=html, auth=auth, received=self.clock.now()))
+            subject=subject, text=text, html=html, auth=auth, received=self.clock.now(),
+            reply_to=reply_to))
 
     def digest_code(self) -> str:
         body = next(m for m in self.mailbox.sent if m.to == [DAI]).body
@@ -58,15 +61,19 @@ def rig(tmp_path: Path, mode: str = "live", known: set[str] | None = None,
     approvals = ApprovalManager(store, audit, clock)
     identity = DaiIdentity(frozenset({DAI}), frozenset({"+15550001111"}))
     limiter = Limiter(tmp_path / "limits.json", clock, default_rules(Limits()))
+    people = PersonBook(store, clock)
+    for address in known if known is not None else {"bob@example.org"}:
+        people.mark_contacted(address)
     policy = OutboundPolicy(
         data_dir=tmp_path, identity=identity, mode=mode, limiter=limiter, approvals=approvals,
-        audit=audit, known_recipient=lambda r: r in (known if known is not None else {"bob@example.org"}),
+        audit=audit, known_recipient=people.is_known,
     )
     mailbox = FakeMailbox()
     gateway = FakeGateway(reply)
     pipe = Pipeline(mailbox=mailbox, store=store, audit=audit, clock=clock, gateway=gateway,
-                    approvals=approvals, policy=policy, identity=identity, dai_email=DAI)
-    return Rig(pipe, mailbox, gateway, clock, approvals, store, tmp_path)
+                    approvals=approvals, policy=policy, identity=identity, dai_email=DAI,
+                    people=people)
+    return Rig(pipe, mailbox, gateway, clock, approvals, store, tmp_path, people)
 
 
 def test_happy_path_inbound_to_approved_reply(tmp_path: Path) -> None:
@@ -219,3 +226,63 @@ def test_every_step_is_audited_and_chain_verifies(tmp_path: Path) -> None:
     for needed in ("pipeline.ingest", "approval.create", "approval.approve", "approval.sent", "policy.decision"):
         assert needed in actions
     assert code not in raw and verify(tmp_path / "audit").ok
+
+
+def test_duplicate_delivery_creates_one_draft_and_one_digest(tmp_path: Path) -> None:
+    r = rig(tmp_path)
+    r.inbound("m1", "bob@example.org", "Hello")
+    r.inbound("m1", "bob@example.org", "Hello")
+    r.pipe.poll()
+    r.inbound("m1", "bob@example.org", "Hello")
+    r.pipe.poll()
+    assert len(r.sent_to(DAI)) == 1 and len(r.store.find(type="draft")) == 1
+    raw = (tmp_path / "audit" / "2026-10.jsonl").read_text(encoding="utf-8")
+    assert raw.count("pipeline.duplicate") == 2
+
+
+def test_new_sender_and_header_tricks_are_flagged_in_the_digest(tmp_path: Path) -> None:
+    r = rig(tmp_path)
+    r.inbound("m1", '"ceo@bank.com" <evil@examp1e.org>', "Pay now", reply_to="steal@elsewhere.test")
+    r.pipe.poll()
+    body = next(m for m in r.mailbox.sent if m.to == [DAI]).body
+    header = body.partition("---- model summary")[0]
+    for flag in ("new_sender", "display_name_mismatch", "reply_to_mismatch"):
+        assert flag in header
+
+
+def test_sender_becomes_known_after_an_approved_reply(tmp_path: Path) -> None:
+    r = rig(tmp_path, known=set())
+    assert not r.people.is_known("bob@example.org")
+    r.people.mark_contacted("bob@example.org")  # Dai has dealt with Bob before
+    r.inbound("m1", "bob@example.org", "Hello")
+    r.pipe.poll()
+    header = next(m for m in r.mailbox.sent if m.to == [DAI]).body.partition("---- model summary")[0]
+    assert "new_sender" not in header
+
+
+def test_first_ever_reply_to_a_stranger_fails_closed_until_a_second_channel_exists(tmp_path: Path) -> None:
+    r = rig(tmp_path, known=set())
+    r.inbound("m1", "stranger@example.net", "Hello")
+    r.pipe.poll()
+    code = r.digest_code()
+    r.inbound("c1", DAI, f"OK {code}")
+    r.pipe.poll()
+    r.clock.advance(timedelta(seconds=61))
+    r.pipe.release_due()
+    assert r.sent_to("stranger@example.net") == []
+    (req,) = r.store.find(type="approval")
+    assert req.status == "failed" and req.extra["failure"] == "second_channel_required"
+
+
+def test_successful_send_marks_the_recipient_known(tmp_path: Path) -> None:
+    r = rig(tmp_path)
+    assert r.people.is_known("bob@example.org")
+    r.inbound("m1", "carol@example.net", "Hello")
+    r.pipe.poll()
+    r.people.mark_contacted("carol@example.net")  # simulate Dai's second-channel confirmation
+    code = r.digest_code()
+    r.inbound("c1", DAI, f"OK {code}")
+    r.pipe.poll()
+    r.clock.advance(timedelta(seconds=61))
+    r.pipe.release_due()
+    assert len(r.sent_to("carol@example.net")) == 1

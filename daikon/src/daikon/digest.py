@@ -11,16 +11,18 @@ from daikon.mail import InboundEmail
 from daikon.untrusted import Untrusted
 
 
-def build_digest(msg: InboundEmail, u: Untrusted, draft: Node, code: str) -> tuple[str, str]:
+def build_digest(
+    msg: InboundEmail, u: Untrusted, draft: Node, code: str, flags: frozenset[str]
+) -> tuple[str, str]:
     x = draft.extra
-    flags = ", ".join(sorted(u.flags)) or "none"
+    flag_text = ", ".join(sorted(flags)) or "none"
     excerpt = "\n".join(f"| {line}" for line in defang(u.text[:400]).splitlines())
     lines = [
         "New email needs your decision",
         f"From: {msg.from_addr} (SPF {msg.auth.spf} / DKIM {msg.auth.dkim}"
         f" / DMARC {msg.auth.dmarc})",
         f"Subject: {defang(msg.subject)[:120]}",
-        f"Flags: {flags}",
+        f"Flags: {flag_text}",
         f"Reply goes to: {', '.join(x['recipients'])}",
         "---- model summary (unverified, may be wrong) ----",
         f"Category: {defang(x['category'])}  Urgency: {x['urgency']}"

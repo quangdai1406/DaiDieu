@@ -30,6 +30,7 @@ class InboundEmail:
     html: str | None
     auth: AuthResults
     received: datetime
+    reply_to: str | None = None
 
 
 class Mailbox(Protocol):

@@ -21,11 +21,11 @@ class Worker:
     def __init__(self, gateway: Gateway, store: GraphStore, clock: Clock, audit: AuditLog) -> None:
         self._gateway, self._store, self._clock, self._audit = gateway, store, clock, audit
 
-    def draft_reply(self, msg: InboundEmail, u: Untrusted) -> Node:
+    def draft_reply(self, msg: InboundEmail, u: Untrusted, recipient: str) -> Node:
         raw = self._gateway.complete_json("draft", DRAFT_SYSTEM, wrap_untrusted(u))
         data = validate_draft(raw)
         body = _CONTROL.sub("", data["draft_body"]).strip()
-        recipients = [msg.from_addr.strip().lower()]  # decided by code, never by the model
+        recipients = [recipient]  # decided by code (the From address), never by the model
         subject = reply_subject(msg.subject)
         node = Node(
             id=f"draft-{msg.id}", type="draft", status="pending_approval",
