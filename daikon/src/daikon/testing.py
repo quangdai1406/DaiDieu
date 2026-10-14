@@ -43,6 +43,7 @@ class FakeGateway:
         "draft_body": "Hi, 12:30 works for me. Best, Dai",
         "citations": [],
         "sensitivity_flags": [],
+        "more_context_terms": [],
     }
 
     def __init__(
@@ -53,6 +54,7 @@ class FakeGateway:
         self.reply = dict(reply if reply is not None else self.DEFAULT)
         self.script = list(script or [])
         self.calls: list[tuple[str, str]] = []
+        self.roles: list[str] = []
         self.schemas: list[Mapping[str, Any] | None] = []
 
     def complete_json(
@@ -64,6 +66,7 @@ class FakeGateway:
         data_label: str = "normal",
     ) -> dict[str, Any]:
         self.calls.append((system, user))
+        self.roles.append(role)
         self.schemas.append(schema)
         step = self.script.pop(0) if self.script else None
         if isinstance(step, Exception):

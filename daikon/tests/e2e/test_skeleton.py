@@ -14,6 +14,7 @@ from daikon.approvals import ApprovalManager
 from daikon.audit import AuditLog, verify
 from daikon.clock import FakeClock
 from daikon.config import Limits
+from daikon.drive.scoped import ScopedDrive
 from daikon.filters import RuleFilter
 from daikon.gateway.anthropic_api import (
     GatewayCapError,
@@ -27,6 +28,7 @@ from daikon.mail import AuthResults, InboundEmail
 from daikon.people import PersonBook
 from daikon.pipeline import Pipeline
 from daikon.policy import DaiIdentity, OutboundPolicy
+from daikon.retrieval import Retriever
 from daikon.testing import FakeGateway, FakeMailbox, FakeMessenger
 
 pytestmark = [pytest.mark.unit, pytest.mark.security]
@@ -65,7 +67,7 @@ class Rig:
 
 def rig(tmp_path: Path, mode: str = "live", known: set[str] | None = None,
         reply: dict[str, Any] | None = None, limits: Limits | None = None,
-        script: list[Any] | None = None) -> Rig:
+        script: list[Any] | None = None, drive: Any = None) -> Rig:
     clock = FakeClock(T0)
     store = GraphStore(tmp_path / "graph")
     audit = AuditLog(tmp_path / "audit", clock)
@@ -85,7 +87,9 @@ def rig(tmp_path: Path, mode: str = "live", known: set[str] | None = None,
     pipe = Pipeline(mailbox=mailbox, store=store, audit=audit, clock=clock, gateway=gateway,
                     approvals=approvals, policy=policy, identity=identity, dai_email=DAI,
                     people=people, rule_filter=RuleFilter(limiter, people, audit),
-                    alerter=Alerter(messenger, limiter, audit))
+                    alerter=Alerter(messenger, limiter, audit),
+                    retriever=(Retriever(ScopedDrive(drive, "root", clock, audit), identity.emails)
+                               if drive is not None else None))
     return Rig(pipe, mailbox, gateway, clock, approvals, store, tmp_path, people, limiter,
                messenger)
 

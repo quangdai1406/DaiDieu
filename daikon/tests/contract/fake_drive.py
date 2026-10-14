@@ -13,6 +13,10 @@ FOLDER = "application/vnd.google-apps.folder"
 DOC = "application/vnd.google-apps.document"
 
 
+def http_error_500() -> HttpError:
+    return HttpError(httplib2.Response({"status": "500"}), b"{}")
+
+
 def not_found() -> HttpError:
     return HttpError(httplib2.Response({"status": "404"}), b"{}")
 
@@ -22,6 +26,7 @@ class FakeDrive:
     files: dict[str, dict[str, Any]] = field(default_factory=dict)
     content: dict[str, bytes] = field(default_factory=dict)
     calls: list[str] = field(default_factory=list)
+    fail_search: Exception | None = None
 
     def add(self, id_: str, name: str, parents: list[str], mime: str = "text/markdown",
             text: str = "", *, size: int | None = None, trashed: bool = False,
@@ -42,6 +47,8 @@ class FakeDrive:
         if m:
             hits = [f for f in self.files.values() if m.group(1) in f["parents"] and not f["trashed"]]
         else:
+            if self.fail_search is not None:
+                raise self.fail_search
             t = re.search(r"fullText contains '((?:[^'\\]|\\.)*)'", q)
             term = (t.group(1) if t else "").replace("\\'", "'").replace("\\\\", "\\").lower()
             hits = [f for f in self.files.values()

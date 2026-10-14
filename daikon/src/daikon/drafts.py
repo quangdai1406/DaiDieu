@@ -14,7 +14,7 @@ URGENCIES = ["low", "normal", "high", "urgent"]
 DRAFT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "required": ["category", "urgency", "confidence", "needs_dai", "summary", "draft_body",
-                 "citations", "sensitivity_flags"],
+                 "citations", "sensitivity_flags", "more_context_terms"],
     "properties": {
         "category": {"type": "string", "maxLength": 60},
         "urgency": {"enum": URGENCIES},
@@ -24,6 +24,8 @@ DRAFT_SCHEMA: dict[str, Any] = {
         "draft_body": {"type": "string", "maxLength": 5000},
         "citations": {"type": "array", "items": {"type": "string", "maxLength": 300}},
         "sensitivity_flags": {"type": "array", "items": {"type": "string", "maxLength": 60}},
+        "more_context_terms": {"type": "array", "maxItems": 5,
+                               "items": {"type": "string", "maxLength": 60}},
     },
 }
 
