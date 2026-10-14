@@ -179,4 +179,5 @@ Rules: one task = one small commit. CI runs the full suite on Windows and unit t
 | Date | Decision / surprise | Effect |
 |---|---|---|
 | 2026-10-14 | Plan simplified; skills and weekly sync deferred to v1.1/v1.2 | Dai's skills work arrives after v1 is live; revisit if Dai wants it earlier |
+| 2026-10-14 | Dai chose to keep the Windows laptop as the runtime (cloud VM analysis declined) | Plan stays Windows-centric; `SecretStore` and scheduler seams keep a later move cheap |
 | 2026-10-14 | Design doc still mentions Pro login and `claude -p` in places | Update design in a docs task alongside M1 |
