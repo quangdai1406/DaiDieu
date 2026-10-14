@@ -1,191 +1,182 @@
-# Daikon — Implementation Plan (v1)
+# Daikon — Implementation Plan (simplified)
 
-Status: **Draft, awaiting Dai's approval.** Based on `docs/daikon-design.md` v4 and the decisions below. No code is written until this plan is approved.
+Status: **Approved to start by Dai (2026-10-14): "implement, test, replan, repeat".** Sources: `CLAUDE.md`, `docs/daikon-design.md`, `docs/daikon-red-team-plan.md`. This file is the single source of truth for build order. It was simplified with `/simplify` + JEV (see §10). Nothing the red-team plan requires for the approval gate was cut.
 
-## 0. Decisions applied from the design's open questions
+## 1. How we work
 
-| Q | Decision (recommendation accepted) |
+**Loop per task (superpowers):** failing test → minimal code → run tests → refactor → review the diff → verify → commit → **replan** (edit this file if anything learned changes the next tasks) → repeat.
+
+**JEV step decision** (record in the commit body for every non-simple task):
+`{"task_complexity":"simple|medium|complex","decision_type":"classification|routing|scoring|judgment","confidence":0.0,"escalate":false}`
+
+| Confidence | Action |
 |---|---|
-| Q5 Claude access | **Anthropic API key with a monthly spend cap** set in the Console, as the default backend. Mail lane calls the **Messages API directly with no tools**. Pro login is not used. |
-| Q6 First script skill | **Word (.docx) builder** first. Excel, PDF and PowerPoint builders later, one at a time, each after a security review. |
-| Skills source | `09 Claude Skills` in the Second Brain (filled by Dai's weekly task). |
-| Gateway backends | Two backends: `anthropic_api` (default) and `openai_compat` (one implementation for **OpenRouter, Ollama, LM Studio, llama.cpp server, or a wrapped AirLLM**; base URL, key and model set per role). `claude_cli` and `claude_agent` are dropped from v1. |
-| Skills lane engine | Daikon's **own tool loop** (named-script runner, file read/write inside the job folder, limits) on top of the gateway, so the skills lane works with any backend that supports tool calls. Safety limits live in our code. |
-| All-OpenRouter option | Supported by config: any role, including skills and (phase 2) calls, can point at OpenRouter. Default stays Anthropic API for text and OpenRouter for calls. Switching needs a passing qualification run (M3.8) and the privacy rules in M4.7. |
-| Local models | Laptop: 8 GB GPU, 32 GB RAM, 1 TB SSD. Start with Ollama or llama.cpp (small 7–8B-class models) for triage and sensitive items; AirLLM only for rare slow batch jobs if ever. Local embeddings for Second Brain search (M4.6). |
-| JEV-style routing | Triage returns a short typed JSON with `confidence` and `escalate`; thresholds (≥0.85 act, 0.70–0.84 act with low-confidence note, <0.70 escalate to the next role) are config values calibrated on real emails (M3.7–M3.8). Confidence only chooses the model tier; it never relaxes approvals, lanes or the sender gate. |
-Budget: API pay-per-token plus Twilio.
+| ≥ 0.85 | Do it |
+| 0.70–0.84 | Do it, note the doubt in the commit |
+| < 0.70 | Stop, lay out options with trade-offs, ask Dai if it changes scope, security or cost |
 
-Model IDs live only in `models.yaml` (not in code). Defaults at implementation time: a small, fast model for `triage`, a stronger one for `draft`/`research`; confirm current IDs and prices on Anthropic's pages in task M3.1.
+Security-sensitive tasks (policy gate, approvals, sender, untrusted input, Drive scoping) are never `simple`. Open-ended writing stays prose.
 
-## 1. Prerequisites that need Dai (do these in parallel with M1–M2)
+**Definition of done:** test written first and passing; ruff and mypy clean; no secrets or private data in the diff; audit entry for every external action (guaranteed by the policy gate, not by convention); docs updated if behavior changed; one small commit. A failing security test stops feature work.
 
-| # | Action | Needed by | Notes |
-|---|---|---|---|
-| P1 | Create Daikon's Gmail account | M2 | Turn on 2-step verification |
-| P2 | Google Cloud project, enable Gmail API and Drive API, OAuth client; set consent screen to **In production** (personal use) so tokens do not expire after 7 days | M2 | Scopes: Gmail read + send for Daikon's account; Drive **read-only** |
-| P3 | Share the **Second Brain** with Daikon's Google account as **Viewer**; disable viewer download/copy/re-share if Workspace allows. If the Workspace blocks external sharing, tell me | M4 | Folder ID `1j8kRB_OiGRirovIVL6gOfjIIhge0ktBk`; get the ID of `09 Claude Skills` too |
-| P4 | Gmail filter on Dai's account: forward chosen mail to Daikon's Gmail | M2 | Start narrow (one label) |
-| P5 | Twilio account, buy a number, **start A2P 10DLC registration now** (takes days) | M5 | Store credentials in Windows Credential Manager, not files |
-| P6 | Anthropic Console: create an API key for Daikon, set a **monthly spend limit** | M3 | Separate key just for Daikon |
-| P7 | Windows: install Python 3.12 and Git; create local user `daikon-jobs` (standard user) for the skills lane; set laptop to never sleep on AC; set active hours for updates | M1, M7b | |
-| P8 | Give Daikon's phone-approval number: Dai's own verified mobile and personal email | M5 | The only command identities |
-| P9 (optional) | Install Ollama or LM Studio on Windows; pull one small model and one embedding model | M3.2b, M4.6 | 8 GB GPU / 32 GB RAM; keep model idle-unload on |
-| P10 | Label about 50 real emails (category and urgency) for the golden set, kept privately in `daikon-data` | M3.8 | Also used to calibrate confidence thresholds |
+## 2. Decisions (only what is not already in `CLAUDE.md`)
 
-## 2. Repository layout and global rules
+Runtime, identity, Second Brain, autonomy, backends and budget are in `CLAUDE.md` "Decisions so far" and `docs/daikon-design.md`; they are not repeated here. Plan-level choices:
+
+- Python 3.12; `pytest`, `ruff`, `mypy`. Reuse libraries instead of hand-rolling: `filelock`, `keyring`, `google-api-python-client` + `google-auth`, `anthropic` SDK retries or `tenacity`, `jsonschema` or `pydantic`, `secrets` + `hmac.compare_digest`, `gitleaks`, `pip-audit`, Dependabot, `schtasks`/exported task XML.
+- **v1 = the smallest safe email loop.** Weekly sync, skills, alternate models and voice are later releases (§5, §6).
+- v1 sends **email only** to others (after G2); SMS goes to Dai only. SMS to third parties is a later, separately reviewed capability.
+- v1 sends only text to Anthropic's API. Sensitive Second Brain excerpts are excluded from model input unless Dai approves that item (replaces privacy routing until other backends exist).
+- Triage output keeps a `confidence` field for later calibration; thresholds and escalation (JEV routing) come with alternate models.
+
+## 3. Releases
+
+| Release | Scope | Enter when |
+|---|---|---|
+| **v1** | Gmail intake → Second Brain context → Claude draft → approval digest (email, SMS when ready) → send after approval | This plan, M1–M6 |
+| v1.1 | Weekly task, skills sync from `09 Claude Skills`, text-only skills in the mail lane | v1 live and stable 1 week |
+| v1.2 | Skills lane (tools, fenced), docx skill first | v1.1 + RT-08 and RT-10 green |
+| v1.3 | `openai_compat` backend, JEV routing, qualification harness, local embeddings, privacy routing for non-Anthropic backends | v1 stable; Dai wants it |
+| v1.4 | Dead-man's switch, cost report, quarterly drill checklist, timed revoke drill | Anytime after v1 |
+| v2 | Phone calls (OpenRouter `call` role) | v1 stable 2 weeks |
+
+## 4. Dai's tasks
+
+**Day 0 (one session, start the long-lead items first):**
+P1 Daikon Gmail account · P2 Google Cloud project, Gmail + Drive APIs, OAuth client, consent screen "In production", scopes Gmail read+send and Drive read-only, **then a real-token smoke test (M2.5)** · P3 share the Second Brain with Daikon's account as Viewer (disable download/copy/re-share if allowed) and test one file read · P5 Twilio account, number, scoped API key, 2FA, number lock, spend cap, **start A2P 10DLC registration now** · P6 Anthropic API key with a monthly spend limit · P8 confirm Dai's mobile number and personal email as the only command identities · P11 hardening: passkey or security key on Daikon's Gmail, Google and GitHub; carrier port-out PIN and SIM lock; BitLocker; password manager · P7 Windows: Python 3.12, Git, never sleep on AC, update active hours.
+
+**Soon after M2 works:** P4 Gmail filter forwarding chosen mail to Daikon (start with one label).
+
+**Later releases only:** `daikon-jobs` Windows user (v1.2); Ollama/LM Studio and 50 labeled emails (v1.3).
+
+## 5. Repository layout and rules
 
 ```
 daikon/
-  pyproject.toml          # Python 3.12, pytest, ruff, mypy
-  models.yaml.example     # roles -> backend + model id + limits (real file lives outside repo)
-  src/daikon/
-    config.py  audit.py  graph/  statemachine.py  filters.py
-    gateway/ (base, anthropic_api, openai_compat)  toolloop.py  routing.py  embeddings.py
-    qualify/ (golden-set harness)
-    gmail/  drive/  sms/  retrieval.py  worker.py  drafts.py
-    approvals.py  sender.py  notifier.py  weekly/  skills/  runner.py  cli.py
-  tests/  (unit/, contract/, security/, e2e/, fixtures/)
-  docs link: ../docs/
-.github/workflows/daikon-ci.yml   # pytest + ruff + mypy on windows-latest and ubuntu-latest
+  pyproject.toml  uv.lock or hashed requirements  models.yaml.example
+  src/daikon/ config.py clock.py secrets.py graph/ audit.py limiter.py approvals.py
+              policy.py untrusted.py alerter.py gateway/ worker.py gmail/ drive/ sms/
+              digest.py notifier.py commands.py sender.py runner.py cli.py
+  tests/ unit/ security/(corpus/*.yaml) contract/ e2e/   # markers: unit, security, live
+.github/workflows/daikon-ci.yml  .github/dependabot.yml  .pre-commit-config.yaml
 ```
 
-Global rules:
-- **Test first.** Each task starts with a failing test, then the minimum code, then refactor. One task = one small commit.
-- The existing Jekyll site is untouched; changes are limited to `daikon/`, `docs/`, `.github/workflows/daikon-ci.yml`, and `.gitignore` additions.
-- **No secrets and no personal data in the repo.** Runtime data lives in `%USERPROFILE%\daikon-data\`. A pre-commit check (task M1.7) blocks token-like strings and `daikon-data` paths.
-- Every external action goes through one `Sender`/`Notifier` seam that the tests can fake. Until the **security gate (G2)** passes, the sender is hard-wired to only allow Dai's own address and number.
-- Every model call goes through the gateway, which logs to the audit file and enforces caps.
+Rules: one task = one small commit. CI runs the full suite on Windows and unit tests on Linux; `live` tests (real Gmail, Drive, Twilio) never run in CI, only manually or nightly on Dai's laptop. Every external action goes through `OutboundPolicy`. Every model call goes through the gateway. The existing Jekyll site is untouched.
 
-## 3. Milestones and tasks
+## 6. v1 milestones
 
-### M1 — Foundations (no external services; runs on Windows)
-| Task | Tests written first | Done when |
+### M1 — Foundations and walking skeleton (no external services)
+| ID | Task | Test first |
 |---|---|---|
-| M1.1 Project skeleton, tooling, CI on Windows + Linux | CI runs an empty pytest | Green CI on both |
-| M1.2 Config loader (`models.yaml`, paths under `daikon-data`, limits) with validation | Missing/invalid keys fail with clear errors; secrets never read from files | Unit tests pass |
-| M1.3 Graph store: node read/write (frontmatter + body), atomic write, single-process lock | Round-trip; crash mid-write leaves old file intact; second instance refuses to start; Windows-safe IDs | Unit tests pass |
-| M1.4 Graph index and traversal (links, typed edges, hubs, queries like "open tasks linked to person X") | Fixture graph; query results; hub regeneration idempotent | Unit tests pass |
-| M1.5 Audit log (append-only JSONL, monthly files, input/output hashes) | Append-only; rotation; no secrets logged (redaction test) | Unit tests pass |
-| M1.6 Approval state machine (design §5) | Every legal transition; every illegal one raises; expiry; exactly-once `sending` rule | 100% of transition table covered |
-| M1.7 Pre-commit secret/data guard + `.gitignore` | Sample token and `daikon-data` file are blocked | Hook works locally and in CI |
+| M1.1 | Skeleton + CI + markers; hashed lockfile, `pip-audit`, Dependabot (pip + Actions), Actions pinned to SHAs; `gitleaks` pre-commit and CI; `.gitignore`; `daikon-data` path guard | CI green; sample token and data path blocked (RT-14) |
+| M1.2 | Config loader; injectable `Clock`; `SecretStore` (keyring, in-memory fake, expiry metadata, 14-day warning) | Missing keys error clearly; clock fakes work; secrets never read from files |
+| M1.3 | Graph store: atomic write (`os.replace`), `filelock` single-instance lock, hubs, simple queries | Crash keeps old file; second instance refuses; Windows-safe IDs |
+| M1.4 | Audit log: append-only JSONL, **hash chain from the first entry**, redaction, verifier | Tamper detected; no secrets logged (RT-17) |
+| M1.5 | `Limiter`: `check_and_consume(scope, key, amount)` for model runs, dollars, sends, SMS, approvals, per-sender hourly | Caps trip; persisted across restarts (RT-07, RT-12) |
+| M1.6 | `ApprovalRequest` core: kinds (`send`, later `skill_activation`, `job_run`, `call_brief`); states incl. held/undone; single-use `secrets` code; expiry; lockout; constant-time compare; exactly-once `sending` | Every legal/illegal transition; replay, stale, wrong code, lockout (RT-04, RT-21) |
+| M1.7 | `OutboundPolicy.evaluate()` → allow / hold(tier, extra channel) / deny(reason), with automatic audit: Dai-only until G2, `PAUSE` file, caps via `Limiter`, first-time recipient, hold-and-undo window | Non-Dai recipient denied; PAUSE blocks; every decision audited (RT-05, RT-20 base) |
+| M1.8 | `Untrusted` type + normalization: HTML→text, strip invisible content, size caps, split quoted/forwarded text, instruction-like flag; shared injection corpus runner (`tests/security/corpus/*.yaml`) | Hidden text, oversize, forwarded-instruction cases (RT-01, 11, 12, 13) |
+| M1.9 | `Alerter`: severity, rate limit, email/SMS fallback | Burst is rate-limited; fallback works |
+| M1.10 | Walking skeleton E2E with fakes: fake Gmail → fake gateway → draft → console notifier → approval → fake sender | One email reaches an approved send; spoofed approval fails |
 
-### M2 — Gmail intake and rule filter
-| Task | Tests first | Done when |
+### M2 — Gmail intake
+| ID | Task | Test first |
 |---|---|---|
-| M2.1 Gmail client wrapper (list new, get, send, labels) behind an interface; fake for tests | Contract fixtures recorded from sample responses | Fake and real share one test suite |
-| M2.2 Message → graph nodes (`message`, `thread`, `person`), dedupe by Message-ID | Duplicate delivery creates one node set | Idempotent |
-| M2.3 Header authentication parsing (SPF/DKIM from `Authentication-Results`) | Pass/fail/missing fixtures | Result stored on `message` |
-| M2.4 Rule filter: newsletters/no-reply (List-Unsubscribe), automated senders, trust levels, daily model-run cap | Table-driven cases | Matches design §2 |
-| M2.5 Poll loop with backoff and heartbeat | Simulated API errors back off; heartbeat written | Unit tests pass |
-| M2.6 OAuth setup command (`daikon auth gmail`) storing tokens in Credential Manager (`keyring`) | Token store/retrieve with a fake keyring | Works on Dai's laptop (manual check) |
+| M2.1 | Gmail wrapper over `google-api-python-client` + fake; `live` contract tests | Fake and real satisfy one interface |
+| M2.2 | Message → `message`/`thread`/`person` nodes, dedupe; sender display (real address, display-name and reply-to mismatch, lookalike, new sender); SPF/DKIM from the Gmail-added `Authentication-Results` only | Fixtures (RT-19) |
+| M2.3 | Rule filter: newsletters/no-reply, trust levels, daily model-run cap via `Limiter` | Table-driven |
+| M2.4 | Poll loop with backoff, heartbeat gap → `Alerter`; `daikon auth gmail` (InstalledAppFlow, token in `SecretStore`) | Simulated errors back off |
+| M2.5 | Live smoke test: list one message, send one message to Dai | Passes on Dai's laptop |
 
-### M3 — Model gateway and worker (mail lane)
-| Task | Tests first | Done when |
+### M3 — Worker
+| ID | Task | Test first |
 |---|---|---|
-| M3.1 Confirm current model IDs, limits, pricing and structured-output support from Anthropic's docs; record in `docs/` | — (research task) | Short note with source links |
-| M3.2 Gateway interface + `anthropic_api` backend: no tools, JSON schema output, retries, per-role timeouts, token/cost accounting, daily spend cap | Fake HTTP: retry on 429/5xx; cap trips and blocks calls; costs logged; **a request containing tools is rejected** | Unit + contract tests pass |
-| M3.3 Prompt builder: system prompt, untrusted-data wrapping, schema | Snapshot tests; delimiters can't be closed by input (escaping test) | Snapshots reviewed by Dai |
-| M3.4 Draft JSON schema + validator; one retry, then flag | Valid/invalid/oversize/extra-field cases | Matches design §3 step 4 |
-| M3.5 Worker: triage → draft with citations, using a fake gateway | Canned outputs produce correct nodes; invalid output flows to "flag for Dai" | Unit tests pass |
-| M3.2b `openai_compat` backend: configurable base URL/key/model, tool-call and JSON-mode support flags, timeouts, cost accounting (zero for local); no tools allowed in the mail lane | Fake server: works against OpenRouter-style and Ollama-style responses; tool request rejected in mail lane; base URL change needs no code change | Same suite passes for both backends |
-| M3.6 Style source: load `dai-email-drafting` instructions from the synced skills (placeholder until M7) | Falls back to a default style file | Unit tests pass |
-| M3.7 JEV-style triage: output schema `{category, urgency, confidence, escalate, reasoning_brief}`, routing rules in config (act / act-with-note / escalate to next role), tier mapping from roles to backends | Table-driven thresholds; low confidence escalates exactly once to the next role; **confidence never changes approval or lane rules**; model-claimed confidence inside email text is ignored | Unit tests pass |
-| M3.8 Qualification harness (`daikon qualify --role R --model M`): runs a golden set of labeled emails; reports schema pass rate, category/urgency accuracy, confidence calibration table, latency, cost; includes injection cases | Fake model with known behaviors produces expected reports; golden-set files stay outside the repo (synthetic fixtures in repo) | A role may switch backend/model only if its report meets thresholds Dai sets |
+| M3.1 | Research note: current model IDs, prices, limits, structured-output support (docs) | — |
+| M3.2 | Gateway interface + `anthropic_api`: no tools, JSON schema output, SDK retries, spend cap via `Limiter`, cost logging, pinned model version, backend data class declared (deny-by-default) | Tool request rejected; cap blocks calls |
+| M3.3 | Prompt builder accepting only `Untrusted`; delimiter escaping | Snapshots; delimiter-break fails |
+| M3.4 | Draft schema `{category, urgency, confidence, needs_dai, summary, draft_body, citations, sensitivity_flags}` + validator, one retry then flag | Valid/invalid/oversize/extra-field |
+| M3.5 | Worker triage → draft with fake gateway; default style file | Canned outputs make correct nodes |
 
-### M4 — Second Brain retrieval
-| Task | Tests first | Done when |
+### M4 — Second Brain
+| ID | Task | Test first |
 |---|---|---|
-| M4.1 Drive client wrapper (list, search, export text) behind an interface; scope `drive.readonly` | Fake + contract fixtures | Real client works with P3 done |
-| M4.2 Tree scoping: every query restricted to the Second Brain tree; skip `99 Superseded`; reject files outside the tree | Out-of-tree and superseded results are dropped | Unit tests pass |
-| M4.3 Excerpt builder: size caps, text-only types, citation links | Caps enforced; citations present | Unit tests pass |
-| M4.4 Two-round retrieve-then-draft in the worker | Round 1 search terms → retriever → round 2 draft; max two rounds | Unit tests pass |
-| M4.5 Sensitivity tagging (folders `06`, `07`, credential/health/finance patterns) → `sensitivity_flags` | Flagged excerpts never appear in draft body unless approved flag set | Security test passes |
-| M4.6 Local embeddings (optional, after G1 if retrieval is weak): local embedding model via `openai_compat`, vectors stored in `daikon-data\index\` (not in the graph), hybrid keyword + semantic search over `source-note` text; rebuilt incrementally in the weekly index refresh | Fixture notes: semantic query finds the right note; no text leaves the machine; index rebuild is idempotent | Retrieval quality beats keyword-only on the golden set |
-| M4.7 Privacy-aware backend routing: sensitivity tagging is done by code (folder + patterns) before any model call; items flagged sensitive may go only to roles whose backend is marked `local` or an approved provider list; otherwise they are withheld and Dai is told | Sensitive excerpt never reaches a cloud-backend fake; allowlist enforced; audit shows which backend saw which item | Security test passes |
+| M4.1 | `ScopedDrive(root_id, deny, max_bytes, mime_allow)` is the only Drive object; `drive.readonly`; skips `99 Superseded`; out-of-tree IDs raise; fake + `live` tests | Out-of-tree and superseded rejected |
+| M4.2 | Excerpts with caps and citation links; trust tagging (owner, last editor); instruction-like text flag | Non-Dai files cannot set recipients (RT-09) |
+| M4.3 | Two-round retrieve-then-draft | Max two rounds |
+| M4.4 | Sensitivity by code (folders `06`, `07`, patterns); sensitive excerpts excluded from model input unless Dai approves the item | Flagged text never reaches the fake gateway |
 
-### M5 — Notifier, approvals and SMS
-| Task | Tests first | Done when |
+### M5 — Notifications and approvals
+| ID | Task | Test first |
 |---|---|---|
-| M5.1 Draft node creation: versioning, `body_sha256`, random 4-char code | Hash changes with body; codes unique and unguessable length | Unit tests pass |
-| M5.2 Digest formatter (SMS short form, email full form with citations) | Length limits; golden files | Reviewed by Dai |
-| M5.3 Notifier to Dai only (email first); recipient fixed to Dai's address | Attempt to notify anyone else raises | Unit tests pass |
-| M5.4 Approval parser: `OK/NO/EDIT <code> …`, case/whitespace tolerant | Table-driven incl. malformed input | Unit tests pass |
-| M5.5 Approval handler: verify sender identity, SPF/DKIM (email), code, version, hash, expiry | Wrong sender, wrong code, stale version, expired draft, replay all rejected | Security tests pass |
-| M5.6 Twilio client wrapper: poll inbound, send; verify From == Dai's number | Fake + fixtures; spoofed From ignored | Unit tests pass (real SMS after P5 clears) |
-| M5.7 Reminders (24 h) and expiry (72 h) | Time-travel tests | Unit tests pass |
+| M5.1 | Digest formatter: plain text, header fields written by code (raw sender, auth result, new-sender flag), model summary below a divider, defanged URLs; SMS short form | Golden files (RT-02, RT-03) |
+| M5.2 | Notifier (email) through `OutboundPolicy`; reminders and expiry via `Clock` | Time-travel tests |
+| M5.3 | `CommandChannel.authenticate()` → `VerifiedCommand` (identity, SPF/DKIM or Twilio evidence, top-level text only); command registry OK/NO/EDIT/UNDO/PAUSE | Spoof, forward, quoted-instruction cases (RT-04, RT-11) |
+| M5.4 | Approval handler on `ApprovalRequest`; EDIT creates version n+1 with a new code | Stale version rejected |
+| M5.5 | Twilio wrapper and SMS channel: poll inbound, verify From, daily SMS cap, scoped key. **Does not block shadow mode** (email approvals first) | Spoofed From ignored (RT-07) |
 
-### M6 — Sender, safety rails
-| Task | Tests first | Done when |
+### M6 — Sender and hardening (finish during shadow week, before G2)
+| ID | Task | Test first |
 |---|---|---|
-| M6.1 Sender: send exactly the stored body, re-verify hash, one send per approval | Double approval sends once; modified body blocked | Unit tests pass |
-| M6.2 Crash safety: `sending` recovery checks the Sent folder before retry | Simulated crash at each step | Never double-sends |
-| M6.3 Kill switch (`PAUSE` file) and global send allowlist (Dai-only until gate G2) | Presence of file blocks all sends; non-Dai recipient blocked pre-G2 | Unit tests pass |
-| M6.4 Rate limits per sender and per day | Burst tests | Unit tests pass |
+| M6.1 | Sender through `OutboundPolicy`: exact stored body, hash re-check, one send per approval, hold-and-undo | Double approval sends once. **Needed before shadow mode (restricted to Dai)** |
+| M6.2 | Crash recovery: check Sent folder before retry | Crash at each step |
+| M6.3 | Task Scheduler XML in repo (start at logon, restart on failure); nightly copy of `daikon-data` | Dry-run output reviewed |
+| M6.4 | `docs/runbook.md`: re-auth, kill switch, key rotation, revoke-everything, lost laptop; one manual revoke drill | Dai reviews |
+| M6.5 | RT traceability test: fails if any in-scope RT ID has no test; injection corpus and golden checks re-run in CI when prompt files or `models.yaml` change (RT-18) | Missing-ID case fails |
+| M6.6 | Repo protections: branch protection, secret scanning, 2FA; decide on a private repo (RT-15) | Checklist verified |
 
-### M7 — Weekly task and skills
-| Task | Tests first | Done when |
+## 7. Later releases (task lists, built after v1 is live)
+
+- **v1.1:** weekly runner entry on the `Clock`/due-at seam; `ScopedDrive` read of `09 Claude Skills`; file allowlist, caps, script hashes; staging and `OK SKILLS <code>` as an `ApprovalRequest(kind=skill_activation)`; skill diff in digest and local pinned manifest (RT-08); text-only skills in the mail lane; weekly health report; index refresh into `source-note` nodes only if retrieval needs it.
+- **v1.2:** `JobFS` (canonical paths, reparse-point/UNC rejection) + `ToolRegistry` (argv-list-only tools) built first; own tool loop; `daikon-jobs` user, ACLs, Job Object limits, outbound firewall rule; command intake from Dai only; enable **docx** only after RT-10 and a written review.
+- **v1.3:** `openai_compat` backend; JEV thresholds and one escalation; `daikon qualify` harness with labeled emails; local embeddings; privacy routing by backend data class (`local | allowlisted | cloud`).
+- **v1.4:** dead-man's switch; cost report with 80% alert; quarterly drill checklist; timed revoke drill.
+- **v2:** call assist, then goal-based calls (design §9, RT-22).
+
+## 8. Rollout and gates
+
+| Stage | What runs | Gate |
 |---|---|---|
-| M7.1 Weekly scheduler entry and task node (`kind: weekly`) | Runs once per window; resumes after downtime | Unit tests pass |
-| M7.2 Index refresh: changed-files walk, `source-note` create/update/retire, hubs | Fixture diffs | Unit tests pass |
-| M7.3 Skills sync from `09 Claude Skills`: allowlist file types, size caps, hash scripts, read declared tool needs | Scripts detected and hashed; disallowed types rejected | Unit tests pass |
-| M7.4 Staging and activation via `OK SKILLS <code>`; hash pinning; changed script re-staged and old pinned version stays active | Tamper test: modified script never runs before approval | Security test passes |
-| M7.5 Weekly health check and report (mail round trip, Twilio, Drive access, token expiry, spend) | Failure injection | Report email sent to Dai |
-| M7.6 Skill-based drafting for mail lane (instruction-only skills, no tools) | Skill text included as trusted instruction block; mail content stays untrusted | Unit tests pass |
+| Shadow mode (1 week) | Intake, triage, drafts, email digests to Dai only; sender restricted to Dai | M1–M5 and M6.1 done; Day-0 tasks done |
+| During shadow week | M6.2–M6.6; SMS joins when A2P clears | — |
+| **G1 quality** | Dai reviews ~20 real drafts: usefulness, voice, citations, sensitive handling | Dai signs off |
+| **G2 security** | In-scope RT tests green: RT-01–07, 09, 11–15, 17–21; revoke drill done; kill switch and caps tested | All green |
+| Live | Sender may deliver approved drafts to others (email) | G1 + G2 |
+| Per-capability gates | RT-08 for skills sync, RT-10 for skills lane, RT-22 for voice | Each green before that capability is enabled |
 
-### M7b — Skills lane (tool-enabled, fenced)
-| Task | Tests first | Done when |
+## 9. Red-team traceability (in-scope for v1)
+
+| RT | Task | RT | Task |
+|---|---|---|---|
+| 01 | M1.8 | 12 | M1.5, M1.8 |
+| 02, 03 | M5.1 | 13 | M1.8 |
+| 04 | M1.6, M5.3 | 14 | M1.1 |
+| 05 | M1.7, M6.1 | 15 | M1.1, M6.6 |
+| 06 | Day-0 P11 (manual checklist) | 17 | M1.4 |
+| 07 | M1.5, M5.5 | 18 | M6.5 |
+| 09 | M4.2 | 19 | M2.2 |
+| 11 | M1.8, M5.3 | 20 | M1.7 |
+| 16 | M6.4 (manual drill) | 21 | M1.6 |
+| 08, 10, 22 | later releases | | |
+
+## 10. Simplification record (JEV)
+
+| Change | Confidence | Source finding |
 |---|---|---|
-| M7b.1 Command intake: only Dai's verified number/email can start a skill job | Spoofed command ignored; mail from others never starts a job | Security test passes |
-| M7b.2 Job folder manager: per-job throwaway folder, input files copied in, output files copied out, cleanup | Path traversal attempts blocked | Unit tests pass |
-| M7b.3 Own tool loop (`toolloop.py`) over the gateway: per-skill tool allowlist (named scripts, read/write inside the job folder; no general shell), time/size/turn limits, no inherited secrets, no network by default; works with any backend that supports tool calls | Denied tools are refused; env is clean; loop stops at limits; same tests pass against the Anthropic and `openai_compat` fakes | Unit + integration tests pass |
-| M7b.4 Run as the restricted Windows user `daikon-jobs`; ACLs deny access to `daikon-data` | Manual verification script; automated ACL check on Windows CI where possible | Verified on Dai's laptop |
-| M7b.5 Enable the **docx** skill only; deliverable stored as `draft` kind `deliverable`, sent to Dai for approval | End-to-end: Dai's command → .docx → approval digest | Dai accepts the result |
-| M7b.6 Security review of the lane, then enable further skills one at a time | Review checklist signed off | Written review in `docs/` |
+| Weekly task, skills sync and skills lane moved to v1.1/v1.2 (deferred, not removed) | 0.95 | Simplification #1, #2 |
+| Alternate-model track (openai_compat, qualification, embeddings, privacy routing) moved to v1.3 | 0.9 | Simplification #3, #5, #6 |
+| JEV thresholds deferred; `confidence` field kept | 0.8 (noted) | #4 |
+| Privacy routing replaced in v1 by "exclude sensitive from model input" | 0.8 (noted) | #7 |
+| Dead-man's switch, quarterly drill checklist, timed drill, cost report moved to v1.4 | 0.85 / 0.75 | #8, #9 |
+| Audit hash chain merged into audit log; digest hardening merged into formatter | 0.85 / 0.7 | Reuse #4, Altitude #11 |
+| One `OutboundPolicy`, one `ApprovalRequest`, one `Untrusted` type, one `Limiter`, plus `Clock`, `SecretStore`, `Alerter` foundations replace ~20 scattered tasks | 0.8–0.85 | Altitude #1, #2, #3, #7, #8 |
+| Libraries replace custom code (`filelock`, `gitleaks`, `keyring`, Dependabot, SDK retries, `secrets`) | 0.75–0.85 | Reuse #3, #5, #6, #10, #11 |
+| Walking skeleton first; Day-0 Dai batch; shadow mode starts after M5 + M6.1; SMS non-blocking; `live` tests out of CI | 0.75–0.85 | Efficiency #1–#5, #10 |
+| Explicit G2 RT list; later capabilities gated by their own RT tests | 0.8 | Altitude #4 |
+| **Not changed (< 0.70):** M1.3 graph trim, nightly-copy vs snapshot task, per-task JEV record rule | 0.5–0.65 | Simplification #10, #13; Efficiency note |
 
-### M8 — Operations and hardening
-| Task | Tests first | Done when |
+## 11. Decisions log
+
+| Date | Decision / surprise | Effect |
 |---|---|---|
-| M8.1 Task Scheduler setup script (start at logon, restart on failure) and runbook | Dry-run mode prints actions; manual verification | Runner survives reboot |
-| M8.2 Injection test corpus (emails, notes, skill text, SMS) run in CI | No state change beyond "draft awaiting approval"; no tool use in mail lane | Gate G2 criterion |
-| M8.3 Backups: daily graph snapshot, retention | Restore test | Documented |
-| M8.4 Cost and usage report in weekly digest; alert at 80% of spend cap | Fake usage data | Unit tests pass |
-| M8.5 Runbook: re-auth steps, kill switch, rotate keys, what to do if the laptop is lost | Reviewed by Dai | In `docs/` |
-
-## 4. Rollout and gates
-
-| Stage | What runs | Gate to enter |
-|---|---|---|
-| **Shadow mode** (1 week) | Intake, triage, drafts, digests to Dai only. Sender can only send to Dai | M1–M5 done, P1–P6 done |
-| **G1: Quality review** | Dai reviews ~20 real drafts: usefulness, voice, citation accuracy, sensitive-content handling | Dai signs off |
-| **G2: Security gate** | Injection corpus passes; spoof tests pass; hash/code binding tests pass; kill switch tested; spend cap tested | All M8.2 tests green |
-| **Live (draft-and-approve)** | Sender allowed to send approved drafts to recipients | G1 + G2 |
-| **Skills lane live** | docx skill enabled | M7b.6 review signed off |
-| **Local / alternate models** | A role may move to a local model or OpenRouter | Qualification report (M3.8) meets Dai's thresholds; M4.7 privacy rules active |
-| **Phase 2 planning** | Voice design starts | v1 stable for 2 weeks |
-
-## 5. Risks retired by milestone
-
-| Risk (design §13) | Retired by |
-|---|---|
-| R1 Claude access / usage | API key with spend cap (M3.2, M8.4) |
-| R3 Gmail token expiry | P2 "In production", M2.6 |
-| R8 Workspace blocks sharing | P3 early check; fallback mirror task added if needed |
-| R11 Retrieval quality | M4.4 plus G1 review; tune the search before widening |
-| R12 Whole Second Brain visible | `drive.readonly` scope, Credential Manager, M4.5 flags |
-| Skills lane abuse | M7b.1–M7b.6, G2 |
-| Local or alternate model is worse at drafting, JSON or tool calls | M3.8 qualification before any switch; per-role fallback to the default backend |
-| Model-reported confidence is poorly calibrated (small models over-confident) | M3.7–M3.8 calibration; thresholds are config; confidence cannot touch approvals |
-| Sensitive notes reach third-party providers (OpenRouter or others) | M4.7 routing, provider allowlist, OpenRouter privacy settings, audit of which backend saw what |
-
-## 6. Assumptions to confirm
-
-- Dai is comfortable with a GitHub Actions workflow being added to this repo (it also hosts the website). If not, CI moves to a separate private repo.
-- Python is acceptable as the implementation language.
-- Monthly spend cap amount for the Anthropic key (suggest starting low and raising after the first week's usage report).
-
-## 7. Red-team additions
-
-`docs/daikon-red-team-plan.md` lists 22 attack scenarios and the controls that answer them. Its §7 adds these tasks: M1.8, M2.7, M2.8, M4.8, M5.8, M5.9, M6.5, M7.7, M7b.7, M8.6, M8.7, M8.8, M8.9 and prerequisite P11 (account hardening). Gate G2 now requires **all** RT tests (RT-01 to RT-22) to pass. A quarterly red-team drill and the long-term prevention program are part of operations (red-team plan §5).
-
-**Awaiting your approval to proceed.** If you approve, I start M1 (foundations) test-first, in `daikon/`, one small commit per task.
+| 2026-10-14 | Plan simplified; skills and weekly sync deferred to v1.1/v1.2 | Dai's skills work arrives after v1 is live; revisit if Dai wants it earlier |
+| 2026-10-14 | Design doc still mentions Pro login and `claude -p` in places | Update design in a docs task alongside M1 |
