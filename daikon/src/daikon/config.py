@@ -31,6 +31,9 @@ class Limits:
     model_runs_per_day: int = 200
     dollars_per_month: float = 20.0
     sends_per_day: int = 30
+    sms_per_day: int = 20
+    approvals_per_day: int = 50
+    per_sender_per_hour: int = 10
 
 
 @dataclass(frozen=True)
