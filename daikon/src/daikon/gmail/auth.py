@@ -17,6 +17,7 @@ from daikon.secretstore import SecretStore
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/drive.readonly",  # Second Brain, shared with Daikon as Viewer
 ]
 TOKEN_NAME = "gmail_token"  # noqa: S105 - the secret store key name, not a secret
 
