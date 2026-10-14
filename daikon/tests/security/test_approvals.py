@@ -217,3 +217,17 @@ def test_every_transition_is_audited_without_codes(env: Env) -> None:
     ]
     assert code not in raw and undo not in raw
     assert verify(env.root / "audit").ok
+
+
+def test_subject_hash_can_be_resolved_lazily_after_the_code_matches(env: Env) -> None:
+    rid, code = new(env)
+    seen: list[str] = []
+
+    def resolver(subject_id: str) -> str:
+        seen.append(subject_id)
+        return H1
+
+    assert env.mgr.approve("ZZZZ", resolver, "x").reason == "wrong_code"
+    assert seen == []  # never resolved for a wrong code
+    assert env.mgr.approve(code, resolver, "dai").ok and seen == ["draft-1"]
+    assert env.mgr.get(rid).state == "held"

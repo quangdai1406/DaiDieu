@@ -16,6 +16,7 @@ import hashlib
 import hmac
 import re
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -90,6 +91,9 @@ class ApprovalManager:
     # ---------- reads ----------
     def get(self, request_id: str) -> ApprovalRequest:
         return self._view(self._store.read("approval", request_id))
+
+    def held_requests(self) -> list[ApprovalRequest]:
+        return [self._view(n) for n in self._store.find(type="approval", status={"held"})]
 
     def sending_requests(self) -> list[ApprovalRequest]:
         return [self._view(n) for n in self._store.find(type="approval", status={"sending"})]
@@ -196,11 +200,19 @@ class ApprovalManager:
             return None, Decision(False, "expired", node.id)
         return node, None
 
-    def approve(self, code: str, current_subject_hash: str, actor: str) -> Decision:
+    def approve(
+        self, code: str, current_subject_hash: str | Callable[[str], str], actor: str
+    ) -> Decision:
+        """Approve by code. The current subject hash may be a callable taking the subject id,
+        evaluated only after the code matched (so wrong codes never trigger lookups)."""
         node, denied = self._pending_for(code, actor)
         if node is None:
             return denied or Decision(False, "wrong_code")
-        if not hmac.compare_digest(current_subject_hash, node.extra["subject_hash"]):
+        current = (
+            current_subject_hash(node.extra["subject_id"])
+            if callable(current_subject_hash) else current_subject_hash
+        )
+        if not hmac.compare_digest(current, node.extra["subject_hash"]):
             return self._deny("subject_changed", actor, node.id)
         undo_code, salt = self._unused_code(), secrets.token_hex(8)
         self._record_success()

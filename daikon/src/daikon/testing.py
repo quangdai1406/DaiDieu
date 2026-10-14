@@ -1,0 +1,53 @@
+"""Fakes shared by tests and the walking skeleton (no network, fully deterministic)."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, ClassVar
+
+from daikon.mail import InboundEmail
+
+
+@dataclass
+class SentMail:
+    to: list[str]
+    subject: str
+    body: str
+    in_reply_to: str | None
+
+
+@dataclass
+class FakeMailbox:
+    inbox: list[InboundEmail] = field(default_factory=list)
+    sent: list[SentMail] = field(default_factory=list)
+
+    def fetch_new(self) -> list[InboundEmail]:
+        out, self.inbox = list(self.inbox), []
+        return out
+
+    def send(
+        self, to: list[str], subject: str, body: str, in_reply_to: str | None = None
+    ) -> str:
+        self.sent.append(SentMail(list(to), subject, body, in_reply_to))
+        return f"sent-{len(self.sent)}"
+
+
+class FakeGateway:
+    DEFAULT: ClassVar[dict[str, Any]] = {
+        "category": "scheduling",
+        "urgency": "normal",
+        "confidence": 0.9,
+        "needs_dai": True,
+        "summary": "Sender asks a scheduling question.",
+        "draft_body": "Hi, 12:30 works for me. Best, Dai",
+        "citations": [],
+        "sensitivity_flags": [],
+    }
+
+    def __init__(self, reply: dict[str, Any] | None = None) -> None:
+        self.reply = dict(reply if reply is not None else self.DEFAULT)
+        self.calls: list[tuple[str, str]] = []
+
+    def complete_json(self, role: str, system: str, user: str) -> dict[str, Any]:
+        self.calls.append((system, user))
+        return dict(self.reply)
