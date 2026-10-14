@@ -110,6 +110,14 @@ class Limiter:
             self._save()
             return LimitResult(True, used + amount, rule.limit, resets_at)
 
+    def record(self, scope: str, amount: float, key: str = "*") -> None:
+        """Add spend that already happened (it may push usage past the cap)."""
+        with self._lock:
+            slot, _, _ = self._slot(scope, key)
+            self._used[slot] = self._used.get(slot, 0.0) + amount
+            self._prune(slot)
+            self._save()
+
     def _prune(self, current_slot: str) -> None:
         """Drop counters from past windows of the same scope/key/window type."""
         prefix = current_slot.rsplit("|", 1)[0] + "|"

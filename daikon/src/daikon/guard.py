@@ -15,13 +15,19 @@ _SECRET_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("secret-openrouter-key", re.compile(r"sk-or-[A-Za-z0-9_\-]{20,}")),
 )
 _DATA_DIR = "daikon-data"
-SECRET_KEY_WORDS = ("api_key", "apikey", "token", "password", "secret", "authorization")
+SECRET_KEY_WORDS = frozenset({"apikey", "token", "password", "passwd", "secret", "authorization"})
 
 
 def is_secret_key(key: str) -> bool:
-    """True if a field name looks like it holds a secret (used by config and audit)."""
-    lowered = key.lower()
-    return any(word in lowered for word in SECRET_KEY_WORDS)
+    """True if a field name looks like it holds a secret (used by config and audit).
+
+    Matches whole words, so ``access_token`` and ``x-api-key`` count but ``max_tokens`` and
+    ``input_tokens`` (counters, not secrets) do not.
+    """
+    words = [w for w in re.split(r"[^a-z0-9]+", key.lower()) if w]
+    if any(w in SECRET_KEY_WORDS for w in words):
+        return True
+    return any(a == "api" and b == "key" for a, b in zip(words, words[1:], strict=False))
 
 
 _AUTH_HEADER = re.compile(r"(?i)\bauthorization\s*[=:]\s*[^\n]+")

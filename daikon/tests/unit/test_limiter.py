@@ -91,3 +91,17 @@ def test_default_rules_follow_config() -> None:
     assert rules["dollars"] == Rule(7.5, "month")
     assert rules["sends"] == Rule(3, "day")
     assert {"sms", "approvals", "sender_hourly"} <= set(rules)
+
+
+def test_record_adds_spend_even_beyond_the_cap_and_blocks_afterwards(tmp_path: Path) -> None:
+    lim, _ = make(tmp_path, dollars=Rule(1.0, "month"))
+    lim.record("dollars", 0.8)
+    lim.record("dollars", 0.5)  # the money is already spent; the ledger must show it
+    assert lim.peek("dollars").used == 1.3 and not lim.peek("dollars").allowed
+    assert not lim.check_and_consume("dollars", amount=0.01).allowed
+
+
+def test_record_unknown_scope_fails_closed(tmp_path: Path) -> None:
+    lim, _ = make(tmp_path)
+    with pytest.raises(KeyError):
+        lim.record("nope", 1)

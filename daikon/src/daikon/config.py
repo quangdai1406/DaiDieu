@@ -12,6 +12,7 @@ from daikon.guard import is_secret_key
 
 BACKENDS = frozenset({"anthropic_api", "openai_compat"})
 DATA_CLASSES = frozenset({"local", "allowlisted", "cloud"})
+EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
 REQUIRED_ROLES = ("triage", "draft")
 
 
@@ -20,10 +21,24 @@ class ConfigError(ValueError):
 
 
 @dataclass(frozen=True)
+class Price:
+    """USD per million tokens (copy from the provider's pricing page; note the date)."""
+
+    input: float
+    output: float
+    cache_read: float | None = None
+    cache_write: float | None = None
+
+
+@dataclass(frozen=True)
 class RoleConfig:
     backend: str
     model: str
     data_class: str
+    max_tokens: int = 2000
+    effort: str | None = None
+    timeout_s: float = 60.0
+    price: Price | None = None
 
 
 @dataclass(frozen=True)
@@ -65,7 +80,28 @@ def _role(name: str, raw: Any) -> RoleConfig:
         raise ConfigError(f"role {name!r}: unknown data_class {data_class!r}")
     if not model or not isinstance(model, str):
         raise ConfigError(f"role {name!r}: model is required")
-    return RoleConfig(backend=backend, model=model, data_class=data_class)
+    effort = raw.get("effort")
+    if effort is not None and effort not in EFFORTS:
+        raise ConfigError(f"role {name!r}: unknown effort {effort!r}")
+    return RoleConfig(
+        backend=backend, model=model, data_class=data_class,
+        max_tokens=int(raw.get("max_tokens", 2000)), effort=effort,
+        timeout_s=float(raw.get("timeout_s", 60)), price=_price(name, raw.get("price")),
+    )
+
+
+def _price(role: str, raw: Any) -> Price | None:
+    if raw is None:
+        return None
+    try:
+        values = {k: float(v) for k, v in raw.items()}
+        price = Price(values["input"], values["output"], values.get("cache_read"),
+                      values.get("cache_write"))
+    except (AttributeError, KeyError, TypeError, ValueError):
+        raise ConfigError(f"role {role!r}: price needs numeric input and output") from None
+    if min(v for v in (price.input, price.output) ) < 0:
+        raise ConfigError(f"role {role!r}: price values must not be negative")
+    return price
 
 
 def load_config(path: Path) -> Config:

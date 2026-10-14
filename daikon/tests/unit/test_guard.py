@@ -54,3 +54,18 @@ def test_redact_secrets_masks_patterns_and_assignments() -> None:
     out = redact_secrets("failed: token=abc123 and key sk-ant-" + "A" * 30 + " Authorization: Bearer xyz")
     assert "abc123" not in out and "sk-ant-" not in out and "xyz" not in out
     assert redact_secrets("plain message") == "plain message"
+
+
+@pytest.mark.parametrize(
+    ("key", "secret"),
+    [
+        ("api_key", True), ("apiKey", True), ("x-api-key", True), ("access_token", True),
+        ("refresh_token", True), ("password", True), ("client_secret", True), ("Authorization", True),
+        ("max_tokens", False), ("input_tokens", False), ("output_tokens", False),
+        ("tokens", False), ("cache_read_input_tokens", False), ("monkey", False), ("keyboard", False),
+    ],
+)
+def test_is_secret_key_matches_words_not_substrings(key: str, secret: bool) -> None:
+    from daikon.guard import is_secret_key
+
+    assert is_secret_key(key) is secret
