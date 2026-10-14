@@ -17,7 +17,8 @@ def build_digest(msg: InboundEmail, u: Untrusted, draft: Node, code: str) -> tup
     excerpt = "\n".join(f"| {line}" for line in defang(u.text[:400]).splitlines())
     lines = [
         "New email needs your decision",
-        f"From: {msg.from_addr} (SPF {msg.auth.spf} / DKIM {msg.auth.dkim})",
+        f"From: {msg.from_addr} (SPF {msg.auth.spf} / DKIM {msg.auth.dkim}"
+        f" / DMARC {msg.auth.dmarc})",
         f"Subject: {defang(msg.subject)[:120]}",
         f"Flags: {flags}",
         f"Reply goes to: {', '.join(x['recipients'])}",

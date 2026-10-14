@@ -49,7 +49,8 @@ class Pipeline:
             id=f"message-{msg.id}", type="message", status="received", created=self._clock.now(),
             body=u.text[:5000],
             extra={"gmail_id": msg.id, "thread_id": msg.thread_id, "from": msg.from_addr,
-                   "subject": msg.subject[:200], "spf": msg.auth.spf, "dkim": msg.auth.dkim,
+                   "subject": msg.subject[:200], "spf": msg.auth.spf,
+                   "dkim": msg.auth.dkim, "dmarc": msg.auth.dmarc,
                    "flags": sorted(u.flags)},
         ))
         self._audit.append("pipeline", "pipeline.ingest", message_id=msg.id, flags=sorted(u.flags))

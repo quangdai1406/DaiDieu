@@ -11,10 +11,12 @@ from typing import Protocol
 class AuthResults:
     spf: str = "none"
     dkim: str = "none"
+    dmarc: str = "none"
 
     @property
     def passed(self) -> bool:
-        return self.spf == "pass" and self.dkim == "pass"
+        """All three must pass; DMARC is what proves alignment with the visible From domain."""
+        return self.spf == "pass" and self.dkim == "pass" and self.dmarc == "pass"
 
 
 @dataclass(frozen=True)

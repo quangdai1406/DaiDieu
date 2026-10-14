@@ -23,7 +23,7 @@ from daikon.testing import FakeGateway, FakeMailbox
 pytestmark = [pytest.mark.unit, pytest.mark.security]
 T0 = datetime(2026, 10, 14, 9, 0, tzinfo=UTC)
 DAI = "dai@example.com"
-PASS = AuthResults(spf="pass", dkim="pass")
+PASS = AuthResults(spf="pass", dkim="pass", dmarc="pass")
 
 
 @dataclass
