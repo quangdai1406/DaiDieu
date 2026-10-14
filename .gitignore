@@ -1,0 +1,12 @@
+
+# Daikon runtime data and local config must never be committed
+daikon-data/
+**/daikon-data/
+models.yaml
+routing.yaml
+.env
+__pycache__/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/

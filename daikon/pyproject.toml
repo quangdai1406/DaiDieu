@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "daikon"
+version = "0.1.0"
+description = "Daikon, Dai's personal AI assistant (draft-and-approve)"
+requires-python = ">=3.12"
+dependencies = ["filelock>=3.13", "keyring>=25", "pyyaml>=6", "jsonschema>=4.21"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10", "types-PyYAML", "types-jsonschema"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-m 'not live'"
+markers = [
+  "unit: fast tests with fakes",
+  "security: red-team / injection / spoof tests (must pass before gate G2)",
+  "live: talks to real Gmail/Drive/Twilio; never run in CI",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
