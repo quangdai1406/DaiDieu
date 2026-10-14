@@ -2,6 +2,14 @@
 
 Status: **Approved to start by Dai (2026-10-14): "implement, test, replan, repeat".** Sources: `CLAUDE.md`, `docs/daikon-design.md`, `docs/daikon-red-team-plan.md`. This file is the single source of truth for build order. It was simplified with `/simplify` + JEV (see §10). Nothing the red-team plan requires for the approval gate was cut.
 
+## Progress (updated after each milestone)
+
+| Milestone | Status |
+|---|---|
+| M1 Foundations and walking skeleton (M1.1–M1.10) | **Done**: 171 tests, ruff and mypy clean, CI green on Windows + Linux for M1.1–M1.7; skeleton e2e covers happy path, Dai-only mode, spoofed/unauthenticated OK, quoted/forwarded OK, lockout, model-chosen recipients, draft tampering, undo, defanged links, untrusted prompt wrapping, audit chain |
+| M2 Gmail intake | Next |
+| M3–M6 | Not started |
+
 ## 1. How we work
 
 **Loop per task (superpowers):** failing test → minimal code → run tests → refactor → review the diff → verify → commit → **replan** (edit this file if anything learned changes the next tasks) → repeat.
@@ -180,4 +188,12 @@ Rules: one task = one small commit. CI runs the full suite on Windows and unit t
 |---|---|---|
 | 2026-10-14 | Plan simplified; skills and weekly sync deferred to v1.1/v1.2 | Dai's skills work arrives after v1 is live; revisit if Dai wants it earlier |
 | 2026-10-14 | Dai chose to keep the Windows laptop as the runtime (cloud VM analysis declined) | Plan stays Windows-centric; `SecretStore` and scheduler seams keep a later move cheap |
+| 2026-10-14 | M1 built test-first; skeleton wired real policy, approvals, audit with fake Gmail/model | Replan items below |
+| 2026-10-14 | **Gap:** policy `hold` (second channel required) currently makes the sender mark the approval `failed` | M6.5 adds an approval state `needs_confirmation` and a second-channel confirm flow; until then high-risk sends fail closed |
+| 2026-10-14 | **Gap:** `approvals` daily cap (Limiter scope) is defined but not consumed anywhere | Consume it in `ApprovalManager.approve` when M5.4 wires the handler |
+| 2026-10-14 | **Gap:** PAUSE verb and the SMS channel are not in `commands.py`; messages from Dai that are not commands are only audited | M5.3 adds PAUSE, SMS, and decides what to do with free-text from Dai |
+| 2026-10-14 | **Gap:** hold length is hard-coded (60 s) in the pipeline's "approved" notice | Read it from `ApprovalManager` config (small cleanup in M5.4) |
+| 2026-10-14 | **Gap:** `known_recipient` for the policy is a callable; no graph-backed implementation yet | Add a `person`-node lookup in M2.2 (sent-to history) |
+| 2026-10-14 | `GraphStore` got a read cache (mtime+size) after the approval tests exposed O(n²) YAML parsing | Keep; cache is per-process only |
+| 2026-10-14 | Actions are pinned by version tag, hashed lockfile not yet generated | Pin to commit SHAs and generate the lockfile in M6.6 (needs network to resolve) |
 | 2026-10-14 | Design doc still mentions Pro login and `claude -p` in places | Update design in a docs task alongside M1 |
