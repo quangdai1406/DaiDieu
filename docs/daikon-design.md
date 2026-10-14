@@ -1,6 +1,8 @@
 # Daikon — Design Document (v1 + phase 2 outline)
 
-Status: **Draft v3, awaiting Dai's approval.** Inputs: decisions in `CLAUDE.md`.
+Status: **Draft v4, awaiting Dai's approval.** Inputs: decisions in `CLAUDE.md`.
+
+What changed in v4: Claude is allowed to use tools for skills, in a separate, tightly fenced **skills lane** (§2); the Claude authentication options are spelled out (§13, R1); and skills come from `09 Claude Skills`, filled by Dai's own weekly Second Brain task (§6).
 
 What changed since v2: OpenRouter is used **only for the phone-call model (phase 2)**. Email and skill work in v1 use Claude (Dai's Claude Pro login via headless `claude -p`). The laptop is **Windows**. Daikon's Google account gets **Viewer access to the whole Second Brain**. A **weekly task** refreshes the Second Brain index and syncs Dai's Claude skills.
 
@@ -50,6 +52,19 @@ What changed since v2: OpenRouter is used **only for the phone-call model (phase
 
 **Key principle:** the only components that can send anything are 7 (to Dai) and 9 (to others, only for an `approved` draft with a matching hash). Claude is a **pure text function**: it has no tools, no connectors, no file or network access. It cannot read Drive, send, write or delete. Everything it knows is what the runner puts in the prompt.
 
+**Two execution lanes.** Whether Claude may use tools depends on who controls the input, because anything an outsider can write (an email) could try to steer a tool-using Claude.
+
+| | **Lane 1: Mail lane** | **Lane 2: Skills lane** |
+|---|---|---|
+| Triggered by | Inbound mail from anyone | A command from Dai's verified number or personal email only |
+| Input | Untrusted email text, plus Second Brain excerpts | Dai's own request, plus trusted files and an approved skill |
+| Claude's tools | **None** | Only what the skill needs, from an allowlist (for example run one named script, read and write inside the job folder) |
+| Where it runs | The runner process | A separate job folder under a restricted Windows user, no access to `daikon-data`, no mail or Drive tokens in its environment |
+| Output | JSON draft | A finished file or text, stored as a `deliverable` draft |
+| Send/post/delete | Not possible | Not possible (code-level gate, §5) |
+
+A mail that asks for a script-based task never starts Lane 2 by itself. Daikon drafts a text reply or a "Dai, do you want me to run X?" item. Only your command starts the skills lane.
+
 **Retrieve-then-draft (instead of letting Claude search Drive):** step A, the worker proposes search terms from the message (JSON); step B, the retriever runs the searches and returns short excerpts with Drive links; step C, the worker drafts using those excerpts and cites them. At most two retrieval rounds per task.
 
 **Model gateway.** One small interface with two backends, chosen per role in `models.yaml`:
@@ -75,7 +90,7 @@ Any role can later be pointed at the other backend, or at an Anthropic API key, 
 8. Approval handler verifies sender and code, then: OK → Sender; NO → `rejected`; EDIT → new worker run producing `version: n+1` and a fresh code.
 9. Sender re-checks the hash, sends, records the Gmail message ID, marks `sent`, writes an audit entry.
 
-**Skill tasks** (e.g. "research X and make a one-page brief") arrive as commands from Dai's verified number or email. The runner loads the named skill (§6) and gives its instructions to the worker. In v1 skills run **without tools**, so only instruction-based skills work; skills that need scripts or file builders (for example .docx or .pdf generation) are out of scope until a sandbox is designed. The finished text is stored as a `draft` node of kind `deliverable`; sending it anywhere still needs approval.
+**Skill tasks** (e.g. "research X and make a one-page brief") arrive as commands from Dai's verified number or email. The runner loads the named skill (§6) and gives its instructions to the worker. Instruction-only skills run in Lane 1 style (no tools). Skills that need scripts or file builders (for example .docx, .pdf, .pptx, .xlsx generation) run in **Lane 2** (§2): tools limited to the skill's declared allowlist, inside a throwaway job folder, no network unless the skill declares it and Dai approved that. The finished text or file is stored as a `draft` node of kind `deliverable`; sending it anywhere still needs approval.
 
 ## 4. Graph file system
 
@@ -144,9 +159,9 @@ Rules: an approval binds to `(draft id, version, body_sha256, approval_code)`; a
 Run by the same runner as a `task` of kind `weekly`. Steps:
 1. **Index refresh:** walk the Second Brain tree through the Drive API (only files changed since the last run), create or update `source-note` link-nodes (title, area, modified time, content hash), retire nodes for deleted files, regenerate hubs.
 2. **Skills sync:** read the skills source folder, mirror skills into `%USERPROFILE%\daikon-data\skills\`, and compare with what is active.
-   - **Source (assumption A2):** a Second Brain subfolder, proposed name `09 Claude Skills`, holding one folder per skill (`SKILL.md` plus reference files). Daikon cannot write to the Second Brain, so something else must fill it, for example a periodic export of Dai's Claude skills done by Dai or by a scheduled Claude routine. How Dai's skills get exported is open question Q3.
-   - **Safety:** only `SKILL.md` and text reference files are accepted. Scripts and executables are rejected and listed. New or changed skills are **staged**, not active.
-   - **Activation:** the weekly digest email lists new, changed and removed skills with a diff summary; they become active when Dai replies `OK SKILLS <code>`. Until then the previous version stays active.
+   - **Source (confirmed by Dai):** the Second Brain folder `09 Claude Skills`, filled by Dai's own weekly Second Brain task with all the skills he has created, one folder per skill (`SKILL.md` plus reference files and any scripts). Daikon only reads it. Folder ID to be recorded in `CLAUDE.md` once it exists in Drive.
+   - **Safety:** every skill is checked on arrival: file types are allowlisted, sizes capped, scripts and their SHA-256 hashes listed, declared tool needs read from the skill. New or changed skills are **staged**, not active.
+   - **Activation:** the weekly digest email lists new, changed and removed skills with a diff summary and flags any that contain scripts or request tools or network access. A skill becomes active when Dai replies `OK SKILLS <code>`; for script skills, activation pins the approved hashes. A script that later changes on Drive is staged again and the old pinned version keeps running until Dai approves. Until then the previous version stays active.
 3. **Health check:** self-test (a test email round trip, Twilio status, Drive access, token expiry dates) and a short report to Dai.
 4. **Housekeeping:** snapshot the graph, prune old audit logs per retention, report spend and run counts.
 
@@ -158,7 +173,8 @@ Run by the same runner as a `task` of kind `weekly`. Steps:
 | Spoofed commands (forged From / SMS) | Commands accepted only from Dai's verified number or personal email; email requires SPF/DKIM pass in `Authentication-Results`; **every approval needs the per-draft random code** |
 | Sending the wrong or changed content | Approval bound to body hash and version; Sender sends the stored body only |
 | Data leak to recipients | Sensitivity flags; no sensitive note content quoted without item-level approval; recipients fixed at draft time and shown in the digest |
-| Poisoned or malicious skill file | Text-only skills, scripts rejected, staged until Dai approves the diff, version hash recorded in every `skill-run` |
+| Poisoned or malicious skill file or script | Skills staged until Dai approves the diff; script hashes pinned at approval; changed scripts never run until re-approved; version hash recorded in every `skill-run`; Lane 2 limits (below) |
+| Tool-using Claude abused through input (Lane 2) | Lane 2 starts only from Dai's verified command; runs as a separate low-privilege Windows user in a throwaway job folder; tool allowlist per skill (named scripts, no general shell); no mail, Drive or Twilio secrets in its environment; no network by default; time and size limits; outputs are only files in the job folder that go through the normal approval gate |
 | Credential theft | Secrets in Windows Credential Manager (via `keyring`) or environment variables; never in repo, graph or logs; Google tokens are Daikon's account only; OpenRouter key (phase 2) has a spend limit; the data folder is readable by Dai's Windows user only |
 | Runaway cost or loops | Daily cap on model runs; max retrieval rounds and max output size per task; per-sender rate limit; kill switch file `%USERPROFILE%\daikon-data\PAUSE` stops all sending |
 | Private data in a public repo | Graph and audit stored outside the repo; `.gitignore` guards; pre-commit check blocks tokens and `daikon-data` content |
@@ -188,6 +204,7 @@ Least privilege summary: Daikon's Gmail (read, send), Twilio (his number), Drive
 - **Scheduler:** Task Scheduler task "Daikon runner" starts at logon, restarts on failure (every minute, up to a limit), runs as Dai's user (the Claude login is per user). A second task runs the weekly job, or the runner triggers it internally.
 - **Power:** set the laptop to never sleep on AC power, and decide the lid-close action. Pause Windows Update restarts during active hours.
 - **Claude Code on Windows:** install and log in once under the same Windows user. Headless runs use `claude -p`; Claude Code on Windows may need Git for Windows, so confirm in milestone 3.
+- **Skills lane account:** create a separate local Windows user (for example `daikon-jobs`) with access only to the job folder and the Python/tools needed; Lane 2 jobs run under that user via the runner (`runas` or a scheduled task). Windows Sandbox is a stronger option if the laptop's Windows edition has it (Pro/Enterprise), and can be added later.
 - **Paths and files:** use `pathlib`, `os.replace` for atomic writes, UTF-8 everywhere, no reliance on POSIX file permissions (use the user-profile folder ACLs instead).
 - **Secrets:** Windows Credential Manager through `keyring`.
 
@@ -230,23 +247,26 @@ One-time: Twilio A2P 10DLC registration (US) before reliable SMS; allow several 
 5. Notifier and approval handler (email first, then Twilio SMS after A2P registration clears).
 6. Sender with exactly-once guarantees; kill switch; expiry.
 7. Weekly task: Second Brain index refresh, skills sync with staging, health check.
+7b. Skills lane: restricted Windows user, job-folder runner, per-skill tool allowlists, hash pinning; start with one script skill (for example docx) and review before enabling others.
 8. Task Scheduler setup, hardening (injection tests, rate limits, backups), runbook.
 
 ## 13. Risks and open decisions for Dai
 
 | ID | Item | Recommendation |
 |---|---|---|
-| R1 | Using a Pro login for unattended `claude -p` runs may conflict with Anthropic's terms or usage limits | Check current terms before building; the gateway lets any role switch to an API key or OpenRouter by config |
+| R1 | Using a Pro login for unattended `claude -p` runs may conflict with Anthropic's terms or hit Pro usage limits | Options in order of preference: **(a)** an Anthropic API key (Console) with a monthly spend cap, used by the same `claude -p` or the Claude Agent SDK; API use is meant for automation, and tools and skills work the same; **(b)** keep the Pro login only for a short prototype at low volume after checking the current terms; **(c)** use OpenRouter for these roles (loses native Claude Code tools). The gateway makes this a config change |
 | R3 | Gmail OAuth: apps in "Testing" mode get refresh tokens that expire after 7 days | Publish the app as "In production" (personal use, unverified warning) or use IMAP/SMTP with an app password |
 | R5 | Approval digest on SMS is short; long drafts are read by email | Accept, or add a local web page for review in v1.1 |
 | R7 | Draft voice | Use Dai's `dai-email-drafting` skill, synced by the weekly task |
 | R8 | Workspace may block sharing the Second Brain with Daikon's account (A1) | Test sharing first; fallbacks in §6 |
-| R10 | Skills that need scripts or file builders can't run in v1 | Instruction-only skills first; design a sandbox later |
+| R10 | Script-based skills carry more risk than text skills | Lane 2 fencing and hash pinning (§2, §6); enable one skill at a time |
 | R11 | Tool-less Claude can't search Drive by itself, so retrieval quality depends on our search | Two-round retrieve-then-draft; improve with the `source-note` index; measure in testing |
 | R12 | Whole Second Brain visible to Daikon increases the impact of a leaked token | Narrow OAuth scope to `drive.readonly`, keep tokens in Credential Manager, restrict Viewer download/copy |
 
-**Open questions for Dai**
-- **Q3:** How will your Claude skills get into the Second Brain (`09 Claude Skills`)? Options: you export them by hand now and then, or a scheduled Claude routine or Claude session copies them weekly, or the weekly task reads them from another place you name.
-- **Q4:** Is `09 Claude Skills` the right folder name and place, or is there an existing Second Brain weekly task whose name or folder I should use?
+**Resolved:** skills source is `09 Claude Skills`, filled by Dai's weekly Second Brain task.
 
-**Awaiting your approval to proceed.** Answer Q3 and Q4, or tell me to proceed on the recommendations, and I will write the implementation plan.
+**Open questions for Dai**
+- **Q5:** Claude authentication for Daikon: API key with a spend cap (recommended), Pro login for a prototype only, or OpenRouter? (R1)
+- **Q6:** Which script-based skills do you want first (for example the Word, PDF, PowerPoint or Excel builders)? I will enable one at a time.
+
+**Awaiting your approval to proceed.** Answer Q5 and Q6, or tell me to proceed on the recommendations, and I will write the implementation plan.
