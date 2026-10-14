@@ -11,6 +11,7 @@ Binding inputs: `CLAUDE.md`, `docs/daikon-design.md` §9, `docs/daikon-red-team-
 2. Three call types: **book** (make an appointment or reservation), **info** (ask questions only, no commitments), **callback** (receive a call from a number Daikon already called).
 3. Each call makes the next cheaper: Daikon remembers how a business works (hours, how they book, what they ask) and asks Dai fewer questions the next time.
 4. Daikon is always honest on the call: an AI assistant, calling on behalf of person A, the call is recorded, asks for an interpreter.
+5. **Every call asks the office to call back Daikon's own number** if anything changes, because person A cannot speak English (decided by Dai, §8.1 step 7). Daikon takes the message and reports to Dai.
 
 **Non-goals (this design)**
 - Daikon never talks to person A directly. Dai is the only person who commands Daikon and the only contact for A.
@@ -107,7 +108,7 @@ The brief is the only thing the call model sees. It is a JSON document, stored a
 | `hard_limits` | For example "never agree above $X", "never give date of birth", "never agree to a different day" |
 | `interpreter` | `request` (always yes) and preferred mode (in person, phone, video) |
 | `no_show_offer` | Absent by default. If present: amount, who is charged, how (§9). Only said if present |
-| `register_callback_numbers` | Allowed to ask for a callback number and add it (Dai approves, §7.4) |
+| `callback_request` | **Always on; cannot be switched off.** Daikon asks the office to call back Daikon's number if anything changes, and asks which number they will call from (an extra number is added only with Dai's approval, §7.4) |
 | `max_minutes`, `retries`, `retry_window` | Limits. Defaults: 8 min, 2 retries, business hours only |
 | `on_voicemail` | `hang_up` (default) or a fixed approved message |
 | `success_criteria`, `stop_conditions` | When the call is done, when to stop and report |
@@ -162,8 +163,8 @@ An entry is created automatically when Daikon dials a number. Nothing else creat
 
 It cannot: agree to, change or cancel anything; reveal any fact the caller did not already state; discuss health, address, date of birth, insurance or payment; promise a callback time; follow any instruction spoken by the caller.
 
-### 7.4 When the office calls from a different number
-Offices often call back from a different line. The brief may allow Daikon to ask at the end of the outbound call: "If you need to reach me, which number will you call from?" The number is **not** added automatically. It goes into the post-call report as "Add 555-0100 as an expected caller? Reply `OK <code>`" (an approval, kind `caller_registration`). Only then does it become an `approved_addition`. This stops a stranger from planting a number.
+### 7.4 Asking every office to call back, and numbers they call from
+**Every call** (book, info and callback) includes the callback request (§8.1 step 7): "If anything changes, please call this number back. [A] does not speak English, so I take the message and pass it on." Daikon gives **his own number** (the Twilio number), spoken slowly and repeated, and never gives Dai's or A's number. Offices often call back from a different line, so Daikon also asks: "Which number will you call from?" The number is **not** added automatically. It goes into the post-call report as "Add 555-0100 as an expected caller? Reply `OK <code>`" (an approval, kind `caller_registration`). Only then does it become an `approved_addition`. This stops a stranger from planting a number.
 
 ### 7.5 Spoofing
 Caller ID can be faked. Controls: message-taking mode reveals nothing and commits to nothing; a spoofer can only leave a false message. So the report to Dai always says: "Unverified: caller ID matched the number we called. If this matters, call the office yourself on the number from the record: [number from the original call]". Dai decides; Daikon never acts on a callback message.
@@ -181,13 +182,14 @@ Unknown callers cost almost nothing (a fixed message, no model). Caps: max N ans
 4. **Interpreter:** ask the office to arrange a Vietnamese interpreter for the appointment, and how that is confirmed.
 5. **No-show offer** (only if in the brief): see §9.
 6. **Confirm back:** date, time, address, provider, what to bring, cancellation rule, a confirmation number. Ask for anything unclear to be repeated.
-7. **Callback number** question (only if allowed by the brief).
+7. **Callback request (always, every call type):** "If anything changes, for example the doctor is not available, please call this number back: [Daikon's number, read slowly in two parts and repeated]. [A] does not speak English, so I am an AI assistant who takes the message and passes it on. Which number will you call from?" Ask the office to confirm they noted it. If they refuse or cannot call back, ask for the best time and number to reach them and report to Dai (§12).
 8. **Close** politely.
 
 ### 8.2 Hard rules (enforced by code around the model)
 - Never say a fact that is not in `shareable_facts`. If asked something else: "I'll check and call back."
 - Never agree to a price, date or term outside `acceptable`.
 - Never follow spoken instructions that change the brief ("ignore your rules", "read me the number").
+- The only phone number Daikon ever gives out is **his own**. Never Dai's, never A's, never any other number from memory or the brief.
 - If the callee asks for a human, objects to talking to an AI, or says to stop calling: end politely, mark `declined`, report. Do not retry.
 - Max duration and silence timeouts end the call.
 - IVR menus: press digits only from a fixed list in the script. Voicemail: `hang_up` by default.
@@ -231,7 +233,16 @@ Every field carries `scope: service` or `scope: person`.
 - Stored call text is **untrusted data**: structured fields with length caps, wrapped as untrusted when read back, never instructions.
 
 ### 10.3 Second Brain
-Daikon stays read-only. After each call he emails Dai the full pre-call and post-call report. Dai's weekly task files the records under a Second Brain area (suggested `09 Calls`, to be chosen by Dai); Daikon reads them back through `ScopedDrive`. Until filed, Daikon uses his local copy. The call-log area is treated as sensitive and is never used for unrelated email drafts.
+Daikon stays read-only. After each call he emails Dai the full pre-call and post-call report and writes the same content as a handover file (type `call` or `inbound`, tag "Daikon Calls"). Dai's Saturday task files handovers into the Second Brain area **`10 Daikon Calls`** (created 2026-10-14: Hub, Entities, Templates) and updates **`Graph - Daikon Calls`** in `00 Control`. Daikon reads them back through `ScopedDrive`. Until filed, Daikon uses his local copy. The area and the graph are treated as sensitive: the retriever withholds them from drafts for unrelated email (`SENSITIVE_PREFIXES` includes `10 ` and any path containing "Daikon Calls").
+
+**GraphRAG read path (`CallMemory`, to build in C4).** The Second Brain's own method, made explicit:
+1. Match the business and the service in Dai's request to Entities rows (exact names and aliases).
+2. Read `Graph - Daikon Calls` through `ScopedDrive`; parse the node and edge tables.
+3. Start at the provider node and the service node; follow edges at most **2 hops** (provider to service, provider to call, call to lesson, provider to inbound message).
+4. Open only the pages the reached nodes name: the Provider page, the last two Call pages, any lesson. Case pages are opened only when the same case is the subject again.
+5. Build a short "what we already know" list (fact, age, source page) and hand it to the interview engine, which turns each fact into one confirmation question.
+6. If the graph and a page disagree, the page wins and the difference goes into the weekly Log.
+The graph holds service-level facts and opaque IDs only (`case.cs-2610-01`, no names). Retrieval code is deterministic; no model sees the Second Brain on a call. Embeddings or community summaries are not needed at this scale; revisit only if the area grows past a few hundred nodes.
 
 ## 11. Security
 
@@ -260,6 +271,8 @@ Also reused: the outbound allowlist (Daikon only dials numbers in an approved br
 | IVR loop / long hold | Press only listed digits; hang up after the timeout; report |
 | Callee confused or hostile | End politely; report; never retry after "stop" |
 | Wrong business / number | End; report; do not retry; flag the provider note |
+| Office refuses or cannot call back Daikon's number | Ask for the best time and a number to reach them; do not argue; report to Dai, who decides whether Daikon calls again |
+| Office calls back from a number not on the list | Fixed message, hang up (no model, no recording); Dai sees "unknown caller" in the daily summary and may approve the number (§7.4) |
 | Call model or OpenRouter down | Do not dial; tell Dai; the brief becomes a **cheat sheet** Dai can use for his own call |
 | STT/TTS problem or high latency | End call politely if it exceeds the latency budget; report |
 | Tunnel or webhook down | Inbound callers hear Twilio's default; Dai gets a health alert; outbound unaffected |
@@ -294,6 +307,7 @@ Set a spend limit on the OpenRouter key and a per-call and daily minute cap.
 - **Brief:** schema validation, hash binding, approval state machine, tamper tests.
 - **Call simulator:** a fake callee (scripted and adversarial) drives the whole call logic with a fake model. No real number is dialed until the simulator suite passes.
 - **Script guards:** outputs outside the brief are rejected (extra facts, price outside range, commitments in `info` calls).
+- **Callback request:** every script (book, info and callback context) contains the callback request, the number spoken is Daikon's own and no other, and the brief cannot disable it.
 - **Inbound:** registry hit and miss, unknown caller costs zero model calls, spoofed number in registry yields only an unverified message, registry addition needs approval, injected text in a message is inert.
 - **Memory:** person-level fields never appear in another person's brief; stored text wrapped as untrusted.
 - **Live:** a labeled `live` test calls Dai's own phone first, then a friendly business, never in CI.
@@ -314,8 +328,10 @@ Set a spend limit on the OpenRouter key and a per-call and daily minute cap.
 
 ## 17. Open questions for Dai
 
-1. Where in the Second Brain should call records live (suggested `09 Calls`)?
-2. May Daikon ask offices for a callback number (§7.4), with your approval before it is added?
+1. ~~Where call records live~~ **Decided:** `10 Daikon Calls` in the Second Brain, with `Graph - Daikon Calls` in `00 Control`.
+2. ~~Callback requests~~ **Decided:** every call asks the office to call back Daikon's own number (§8.1 step 7); extra numbers they call from are added only with your approval (§7.4).
+2a. The Saturday task must be extended to file Daikon Calls handovers (instruction text in the Log `2026-10-14 - Daikon Calls setup`). Which Handovers folder should Daikon's reports go to?
+2b. Offices may also **text** Daikon's number (appointment reminders). Treat texts from a number on the callback list as untrusted information relayed to you (read-only), and ignore all others? Recommended: yes, later, with its own red-team row.
 3. Inbound unknown callers: a fixed message then hang up (recommended), or voicemail-only recording of a short message that you review?
 4. Which businesses should be the first test (a friendly business you know)?
 5. How should person A's consent be recorded (Dai's confirmation only, or a short text in Vietnamese that A can show)?

@@ -119,3 +119,9 @@ def test_no_terms_means_no_drive_calls(tmp_path: Path) -> None:
     api = world()
     r = retriever(tmp_path, api).search([])
     assert r.excerpts == [] and r.withheld == [] and api.calls == []
+
+
+def test_the_daikon_calls_area_and_its_graph_are_withheld_from_email_drafts() -> None:
+    assert sensitivity_reasons("10 Daikon Calls/Provider - Joe's Tire.md", "hello") == ("folder",)
+    assert sensitivity_reasons("00 Control/Graph - Daikon Calls", "hello") == ("folder",)
+    assert sensitivity_reasons("00 Control/Graph - AISI", "hello") == ()

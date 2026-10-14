@@ -17,7 +17,8 @@ from daikon.drive.scoped import DriveAccessError, DriveFile, ScopedDrive
 from daikon.guard import contains_secret
 from daikon.untrusted import Source, Trust, normalize_text
 
-SENSITIVE_PREFIXES = ("06 ", "07 ")  # 06 Trading and Investments, 07 Personal and Working Style
+SENSITIVE_PREFIXES = ("06 ", "07 ", "10 ")  # 06 Trading, 07 Personal, 10 Daikon Calls
+SENSITIVE_NAMES = ("daikon calls",)  # also pages of that project stored elsewhere (its Graph)
 _SSN = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
 _CARD = re.compile(r"(?<!\d)(?:\d[ -]?){13,19}(?!\d)")
 _TERM_GROUPS = (
@@ -44,7 +45,9 @@ def sensitivity_reasons(
     path: str, text: str, prefixes: tuple[str, ...] = SENSITIVE_PREFIXES
 ) -> tuple[str, ...]:
     reasons: list[str] = []
-    if path.split("/")[0].startswith(prefixes):
+    if path.split("/")[0].startswith(prefixes) or any(
+        name in path.lower() for name in SENSITIVE_NAMES
+    ):
         reasons.append("folder")
     for name, pattern in _TERM_RES[:1]:
         if pattern.search(text):
