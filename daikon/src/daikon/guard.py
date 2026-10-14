@@ -15,6 +15,18 @@ _SECRET_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("secret-openrouter-key", re.compile(r"sk-or-[A-Za-z0-9_\-]{20,}")),
 )
 _DATA_DIR = "daikon-data"
+SECRET_KEY_WORDS = ("api_key", "apikey", "token", "password", "secret", "authorization")
+
+
+def is_secret_key(key: str) -> bool:
+    """True if a field name looks like it holds a secret (used by config and audit)."""
+    lowered = key.lower()
+    return any(word in lowered for word in SECRET_KEY_WORDS)
+
+
+def contains_secret(text: str) -> bool:
+    """True if text matches a known secret pattern."""
+    return any(pattern.search(text) for _, pattern in _SECRET_RULES)
 
 
 @dataclass(frozen=True)

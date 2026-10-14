@@ -8,10 +8,11 @@ from typing import Any
 
 import yaml
 
+from daikon.guard import is_secret_key
+
 BACKENDS = frozenset({"anthropic_api", "openai_compat"})
 DATA_CLASSES = frozenset({"local", "allowlisted", "cloud"})
 REQUIRED_ROLES = ("triage", "draft")
-_SECRET_WORDS = ("api_key", "apikey", "token", "password", "secret", "authorization")
 
 
 class ConfigError(ValueError):
@@ -42,7 +43,7 @@ class Config:
 def _reject_secret_keys(node: Any, path: str = "") -> None:
     if isinstance(node, dict):
         for key, value in node.items():
-            if any(w in str(key).lower() for w in _SECRET_WORDS):
+            if is_secret_key(str(key)):
                 raise ConfigError(f"secret-like key {path}{key!r} is not allowed in config files")
             _reject_secret_keys(value, f"{path}{key}.")
     elif isinstance(node, list):
