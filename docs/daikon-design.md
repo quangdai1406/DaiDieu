@@ -58,7 +58,7 @@ What changed since v2: OpenRouter is used **only for the phone-call model (phase
 |---|---|---|
 | Triggered by | Inbound mail from anyone | A command from Dai's verified number or personal email only |
 | Input | Untrusted email text, plus Second Brain excerpts | Dai's own request, plus trusted files and an approved skill |
-| Claude's tools | **None** | Only what the skill needs, from an allowlist (for example run one named script, read and write inside the job folder) |
+| Model tools | **None** | Daikon's own tool loop: only what the skill needs, from an allowlist (run one named script, read and write inside the job folder); backend-agnostic |
 | Where it runs | The runner process | A separate job folder under a restricted Windows user, no access to `daikon-data`, no mail or Drive tokens in its environment |
 | Output | JSON draft | A finished file or text, stored as a `deliverable` draft |
 | Send/post/delete | Not possible | Not possible (code-level gate, §5) |
@@ -67,16 +67,37 @@ A mail that asks for a script-based task never starts Lane 2 by itself. Daikon d
 
 **Retrieve-then-draft (instead of letting Claude search Drive):** step A, the worker proposes search terms from the message (JSON); step B, the retriever runs the searches and returns short excerpts with Drive links; step C, the worker drafts using those excerpts and cites them. At most two retrieval rounds per task.
 
-**Model gateway.** One small interface with two backends, chosen per role in `models.yaml`:
+**Model gateway.** One small interface with two backends, chosen **per role** in `models.yaml`:
 
-| Role | Backend (v1 default) | Used for |
+| Backend | Covers | Notes |
 |---|---|---|
-| `triage`, `draft`, `research` | `anthropic_api` (Messages API, no tools); script skills use `claude_agent` in the skills lane | Classify, summarize, search terms, drafts, skill tasks |
-| `call` (phase 2) | `openrouter` | Live phone conversation, see §9 |
+| `anthropic_api` (default for text roles) | Claude models via Dai's API key with a monthly spend cap | Messages API; tools disabled in the mail lane |
+| `openai_compat` | **OpenRouter**, Ollama, LM Studio, llama.cpp server, or a thin wrapper around AirLLM | Base URL, key and model per role; flags for tool-call and JSON-mode support |
 
-Any role can later be pointed at the other backend, or at an Anthropic API key, by editing config only.
+| Role | Default backend | Used for |
+|---|---|---|
+| `triage` | `anthropic_api` (small, fast model); can move to a local model after qualification | Classify urgency/category, summarize, with confidence |
+| `draft`, `research` | `anthropic_api` | Search terms, drafts in Dai's voice |
+| `skills` | `anthropic_api`, through Daikon's own tool loop | Skills lane (see lanes above) |
+| `call` (phase 2) | `openai_compat` → OpenRouter | Live phone conversation, see §9 |
 
-**Technology (assumptions to confirm):** Python 3.12 for Windows, `google-api-python-client` (Gmail, Drive), `twilio`, `keyring` (Windows Credential Manager), `pyyaml`, `jsonschema`, `pytest`. Scheduling: **Windows Task Scheduler** (details in §8).
+Any role can be pointed at OpenRouter (**all-OpenRouter is a supported configuration**) or at a local model by editing config only. A role may switch only after it passes the **qualification harness** (a golden set of Dai's labeled emails: schema pass rate, accuracy, confidence calibration, latency, cost, injection cases).
+
+**JEV-style routing.** Short decisions use typed JSON with a confidence number, and only uncertain ones escalate (this follows Dai's `jev-system-one` skill):
+
+| Confidence (starting values, tuned on real emails) | Action |
+|---|---|
+| ≥ 0.85 | Use the result |
+| 0.70 – 0.84 | Use it and mark the item "low confidence" in the digest |
+| < 0.70 | Escalate once to the next role/model (for example local `triage` → cloud `triage`), then stop |
+
+Confidence **only selects a model tier**. It never relaxes an approval, a lane boundary or the sender gate, and any "confidence" text inside an email is ignored.
+
+**Privacy-aware routing.** Sensitivity is decided by code (folder, patterns) before any model call. Items flagged sensitive may go only to roles whose backend is marked `local` or to an approved provider list; otherwise they are withheld and Dai is told. The audit log records which backend saw which item.
+
+**Local option (Dai's laptop: 8 GB GPU, 32 GB RAM).** Small 7–8B-class models run well for triage and sensitive items. Mid-size models are slower. 70B-class models would need AirLLM (very slow, batch only). Live calls and tool-heavy skills stay on cloud models. Optional local embeddings improve Second Brain search without sending notes anywhere.
+
+**Technology (assumptions to confirm):** Python 3.12 for Windows, `google-api-python-client` (Gmail, Drive), `httpx`, `twilio`, `keyring` (Windows Credential Manager), `pyyaml`, `jsonschema`, `pytest`. Scheduling: **Windows Task Scheduler** (details in §8).
 
 ## 3. Data flow (email reply, the main v1 loop)
 
@@ -179,6 +200,8 @@ Run by the same runner as a `task` of kind `weekly`. Steps:
 | Runaway cost or loops | Daily cap on model runs; max retrieval rounds and max output size per task; per-sender rate limit; kill switch file `%USERPROFILE%\daikon-data\PAUSE` stops all sending |
 | Private data in a public repo | Graph and audit stored outside the repo; `.gitignore` guards; pre-commit check blocks tokens and `daikon-data` content |
 | Tampering/forensics | Append-only audit JSONL: every fetch, model run (role, backend, input hash, output hash), retrieval (which file IDs were read), notification, approval, skill activation, send |
+| Confidence or routing manipulation | Confidence selects only a model tier; email-supplied confidence text is ignored; approvals, lanes and sender gate never depend on it |
+| Sensitive notes sent to third-party providers | Code-based sensitivity tagging; sensitive items go only to `local` or allowlisted backends; audit of which backend saw what |
 | Phone-call model sees too much (phase 2) | The `call` model gets only the approved call brief, never Drive access or inbox content (§9) |
 
 Least privilege summary: Daikon's Gmail (read, send), Twilio (his number), Drive (Viewer on the Second Brain), no access to Dai's Gmail or calendar, no tools for the model.
@@ -242,7 +265,7 @@ One-time: Twilio A2P 10DLC registration (US) before reliable SMS; allow several 
 
 1. Repo skeleton, graph store, audit log, state machine (no external services). Runs on Windows.
 2. Gmail fetcher and rule filter, writing nodes.
-3. Model gateway with the `claude_cli` backend (no-tools, schema validation, usage-limit handling), tested with a fake gateway; confirm Claude Code on Windows works headless.
+3. Model gateway with `anthropic_api` and `openai_compat` backends (no-tools mail lane, schema validation, spend caps), JEV-style routing, and the qualification harness, tested with fake gateways.
 4. Drive retriever (Viewer account), retrieve-then-draft, citations.
 5. Notifier and approval handler (email first, then Twilio SMS after A2P registration clears).
 6. Sender with exactly-once guarantees; kill switch; expiry.
@@ -261,10 +284,13 @@ One-time: Twilio A2P 10DLC registration (US) before reliable SMS; allow several 
 | R8 | Workspace may block sharing the Second Brain with Daikon's account (A1) | Test sharing first; fallbacks in §6 |
 | R10 | Script-based skills carry more risk than text skills | Lane 2 fencing and hash pinning (§2, §6); enable one skill at a time |
 | R11 | Tool-less Claude can't search Drive by itself, so retrieval quality depends on our search | Two-round retrieve-then-draft; improve with the `source-note` index; measure in testing |
+| R13 | Local or alternate models may be worse at drafting, JSON or tool calls | Qualification harness before any switch; fallback to the default backend |
+| R14 | Model-claimed confidence is poorly calibrated, especially in small models | Calibrate on real emails; thresholds are config |
+| R15 | Own tool loop must be built and secured (instead of using the Agent SDK) | Small allowlist-only design, tested against both backends (plan M7b.3) |
 | R12 | Whole Second Brain visible to Daikon increases the impact of a leaked token | Narrow OAuth scope to `drive.readonly`, keep tokens in Credential Manager, restrict Viewer download/copy |
 
 **Resolved:** skills source is `09 Claude Skills`, filled by Dai's weekly Second Brain task.
-**Resolved (Dai accepted recommendations):** Q5 Claude access is an Anthropic API key with a monthly spend cap. The mail lane uses the Messages API directly with no tools (backend `anthropic_api`); the skills lane uses the Claude Agent SDK / headless Claude Code with the same key (backend `claude_agent`); `claude_cli` on a Pro login is dropped. Q6 the first script skill enabled is the Word (docx) builder. See `docs/daikon-implementation-plan.md` §0.
+**Resolved (Dai accepted recommendations):** Q5 Claude access is an Anthropic API key with a monthly spend cap (backend `anthropic_api`); the mail lane uses the Messages API with no tools. Q6 the first script skill enabled is the Word (docx) builder. Later additions (v4.1): `openai_compat` backend for OpenRouter/local models, Daikon's own tool loop for the skills lane (replacing the Agent SDK), JEV-style confidence routing, privacy-aware routing, optional local embeddings, and a qualification harness. See `docs/daikon-implementation-plan.md` §0.
 
 **Open questions for Dai**
 - **Q5:** Claude authentication for Daikon: API key with a spend cap (recommended), Pro login for a prototype only, or OpenRouter? (R1)

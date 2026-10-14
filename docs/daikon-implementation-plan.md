@@ -30,6 +30,8 @@ Model IDs live only in `models.yaml` (not in code). Defaults at implementation t
 | P6 | Anthropic Console: create an API key for Daikon, set a **monthly spend limit** | M3 | Separate key just for Daikon |
 | P7 | Windows: install Python 3.12 and Git; create local user `daikon-jobs` (standard user) for the skills lane; set laptop to never sleep on AC; set active hours for updates | M1, M7b | |
 | P8 | Give Daikon's phone-approval number: Dai's own verified mobile and personal email | M5 | The only command identities |
+| P9 (optional) | Install Ollama or LM Studio on Windows; pull one small model and one embedding model | M3.2b, M4.6 | 8 GB GPU / 32 GB RAM; keep model idle-unload on |
+| P10 | Label about 50 real emails (category and urgency) for the golden set, kept privately in `daikon-data` | M3.8 | Also used to calibrate confidence thresholds |
 
 ## 2. Repository layout and global rules
 
@@ -99,6 +101,8 @@ Global rules:
 | M4.3 Excerpt builder: size caps, text-only types, citation links | Caps enforced; citations present | Unit tests pass |
 | M4.4 Two-round retrieve-then-draft in the worker | Round 1 search terms → retriever → round 2 draft; max two rounds | Unit tests pass |
 | M4.5 Sensitivity tagging (folders `06`, `07`, credential/health/finance patterns) → `sensitivity_flags` | Flagged excerpts never appear in draft body unless approved flag set | Security test passes |
+| M4.6 Local embeddings (optional, after G1 if retrieval is weak): local embedding model via `openai_compat`, vectors stored in `daikon-data\index\` (not in the graph), hybrid keyword + semantic search over `source-note` text; rebuilt incrementally in the weekly index refresh | Fixture notes: semantic query finds the right note; no text leaves the machine; index rebuild is idempotent | Retrieval quality beats keyword-only on the golden set |
+| M4.7 Privacy-aware backend routing: sensitivity tagging is done by code (folder + patterns) before any model call; items flagged sensitive may go only to roles whose backend is marked `local` or an approved provider list; otherwise they are withheld and Dai is told | Sensitive excerpt never reaches a cloud-backend fake; allowlist enforced; audit shows which backend saw which item | Security test passes |
 
 ### M5 — Notifier, approvals and SMS
 | Task | Tests first | Done when |
@@ -134,7 +138,7 @@ Global rules:
 |---|---|---|
 | M7b.1 Command intake: only Dai's verified number/email can start a skill job | Spoofed command ignored; mail from others never starts a job | Security test passes |
 | M7b.2 Job folder manager: per-job throwaway folder, input files copied in, output files copied out, cleanup | Path traversal attempts blocked | Unit tests pass |
-| M7b.3 `claude_agent` backend: per-skill tool allowlist (named scripts only, no general shell), time/size/turn limits, no inherited secrets, no network by default | Test harness verifies denied tools are refused and env is clean | Unit + integration tests pass |
+| M7b.3 Own tool loop (`toolloop.py`) over the gateway: per-skill tool allowlist (named scripts, read/write inside the job folder; no general shell), time/size/turn limits, no inherited secrets, no network by default; works with any backend that supports tool calls | Denied tools are refused; env is clean; loop stops at limits; same tests pass against the Anthropic and `openai_compat` fakes | Unit + integration tests pass |
 | M7b.4 Run as the restricted Windows user `daikon-jobs`; ACLs deny access to `daikon-data` | Manual verification script; automated ACL check on Windows CI where possible | Verified on Dai's laptop |
 | M7b.5 Enable the **docx** skill only; deliverable stored as `draft` kind `deliverable`, sent to Dai for approval | End-to-end: Dai's command → .docx → approval digest | Dai accepts the result |
 | M7b.6 Security review of the lane, then enable further skills one at a time | Review checklist signed off | Written review in `docs/` |
@@ -157,6 +161,7 @@ Global rules:
 | **G2: Security gate** | Injection corpus passes; spoof tests pass; hash/code binding tests pass; kill switch tested; spend cap tested | All M8.2 tests green |
 | **Live (draft-and-approve)** | Sender allowed to send approved drafts to recipients | G1 + G2 |
 | **Skills lane live** | docx skill enabled | M7b.6 review signed off |
+| **Local / alternate models** | A role may move to a local model or OpenRouter | Qualification report (M3.8) meets Dai's thresholds; M4.7 privacy rules active |
 | **Phase 2 planning** | Voice design starts | v1 stable for 2 weeks |
 
 ## 5. Risks retired by milestone
@@ -169,6 +174,9 @@ Global rules:
 | R11 Retrieval quality | M4.4 plus G1 review; tune the search before widening |
 | R12 Whole Second Brain visible | `drive.readonly` scope, Credential Manager, M4.5 flags |
 | Skills lane abuse | M7b.1–M7b.6, G2 |
+| Local or alternate model is worse at drafting, JSON or tool calls | M3.8 qualification before any switch; per-role fallback to the default backend |
+| Model-reported confidence is poorly calibrated (small models over-confident) | M3.7–M3.8 calibration; thresholds are config; confidence cannot touch approvals |
+| Sensitive notes reach third-party providers (OpenRouter or others) | M4.7 routing, provider allowlist, OpenRouter privacy settings, audit of which backend saw what |
 
 ## 6. Assumptions to confirm
 
