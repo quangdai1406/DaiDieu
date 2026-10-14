@@ -43,6 +43,10 @@ class Pipeline:
             else:
                 self._ingest(msg, u)
 
+    def housekeeping(self) -> None:
+        for request_id in self._approvals.expire_due():
+            self._audit.append("pipeline", "pipeline.expired", request_id=request_id)
+
     def release_due(self) -> None:
         now = self._clock.now()
         for req in self._approvals.held_requests():

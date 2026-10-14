@@ -24,6 +24,22 @@ def is_secret_key(key: str) -> bool:
     return any(word in lowered for word in SECRET_KEY_WORDS)
 
 
+_AUTH_HEADER = re.compile(r"(?i)\bauthorization\s*[=:]\s*[^\n]+")
+_BEARER = re.compile(r"(?i)\bbearer\s+\S+")
+_ASSIGNMENT = re.compile(
+    r"(?i)\b(api[_-]?key|token|secret|password|passwd)\b(\s*[=:]\s*|\s+)\S+"
+)
+
+
+def redact_secrets(text: str) -> str:
+    """Mask known secret patterns and ``token=...`` style assignments (for logs and errors)."""
+    for _, pattern in _SECRET_RULES:
+        text = pattern.sub("[REDACTED]", text)
+    text = _AUTH_HEADER.sub("authorization=[REDACTED]", text)
+    text = _BEARER.sub("bearer [REDACTED]", text)
+    return _ASSIGNMENT.sub(lambda m: f"{m.group(1)}=[REDACTED]", text)
+
+
 def contains_secret(text: str) -> bool:
     """True if text matches a known secret pattern."""
     return any(pattern.search(text) for _, pattern in _SECRET_RULES)

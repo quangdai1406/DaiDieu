@@ -46,3 +46,11 @@ def test_violation_reports_path_and_line() -> None:
     text = "ok\nsk-ant-" + "B" * 40 + "\n"
     (v,) = find_violations({"a.py": text})
     assert (v.path, v.line) == ("a.py", 2)
+
+
+def test_redact_secrets_masks_patterns_and_assignments() -> None:
+    from daikon.guard import redact_secrets
+
+    out = redact_secrets("failed: token=abc123 and key sk-ant-" + "A" * 30 + " Authorization: Bearer xyz")
+    assert "abc123" not in out and "sk-ant-" not in out and "xyz" not in out
+    assert redact_secrets("plain message") == "plain message"
