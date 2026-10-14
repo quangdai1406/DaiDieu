@@ -100,7 +100,8 @@ Codes are one-time and change with every draft. Three wrong codes lock approvals
 - **Gate 2, security:** `pytest` is green including `tests/security`, the checklists below are
   done, the revoke drill (section 11) has been done once, and the kill switch has been tested.
 - Then set `outbound_mode: live` in `models.yaml` and restart the task. The first reply to any new
-  person still needs an extra confirmation step (currently it fails safe and tells you).
+  person needs a one-time `CONFIRM` text to your phone (SMS must be set up; without SMS it
+  fails safe and tells you).
 
 ## 9. Account hardening checklist
 

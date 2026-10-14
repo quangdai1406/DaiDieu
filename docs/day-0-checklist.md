@@ -124,6 +124,6 @@ after that, and the security checks pass, set `outbound_mode: live`.
 ## Decisions already made (so you do not need to re-decide)
 - Daikon only drafts; **you approve everything**. Nothing leaves without your reply.
 - Only your own phone and personal email can command Daikon.
-- First reply to any new person needs a **one-time confirmation text** to your phone (to be
-  built; it works once SMS is approved).
+- First reply to any new person needs a **one-time confirmation text** to your phone (built;
+  it works once SMS is approved).
 - Phone calls and the community call-booking skill come after v1 has run stably for two weeks.
