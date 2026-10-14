@@ -125,6 +125,7 @@ The G2 security gate in the plan now requires **all RT tests** to pass, not only
 
 ## 8. Residual risks Dai accepts (for now)
 
+- An outsider can influence which non-sensitive Second Brain notes are retrieved (their email supplies the search keywords). The notes can then appear in a draft, but only Dai can approve sending, and the digest lists the draft and every note used. Sensitive notes (folders 06 and 07, credentials, card and ID numbers, health and finance terms) are withheld from every model by code.
 - A determined attacker who controls both Dai's phone and the Daikon mailbox can still impersonate approvals on low-risk items. The second channel, hold-and-undo and caps limit the damage but do not remove it.
 - Prompt injection cannot be fully solved for any model. The design depends on containment (no tools in the mail lane, approval, hold-and-undo), not on the model resisting.
 - Third-party model providers see the text sent to them. Sensitive items stay local or are withheld.

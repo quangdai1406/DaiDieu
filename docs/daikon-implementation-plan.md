@@ -6,9 +6,13 @@ Status: **Approved to start by Dai (2026-10-14): "implement, test, replan, repea
 
 | Milestone | Status |
 |---|---|
-| M1 Foundations and walking skeleton (M1.1–M1.10) | **Done**: 171 tests, ruff and mypy clean, CI green on Windows + Linux for M1.1–M1.7; skeleton e2e covers happy path, Dai-only mode, spoofed/unauthenticated OK, quoted/forwarded OK, lockout, model-chosen recipients, draft tampering, undo, defanged links, untrusted prompt wrapping, audit chain |
-| M2 Gmail intake | Next |
-| M3–M6 | Not started |
+| M1 Foundations and walking skeleton (M1.1–M1.10) | **Done** (395 tests across all milestones now; at M1: 171 tests, ruff and mypy clean, CI green on Windows + Linux for M1.1–M1.7; skeleton e2e covers happy path, Dai-only mode, spoofed/unauthenticated OK, quoted/forwarded OK, lockout, model-chosen recipients, draft tampering, undo, defanged links, untrusted prompt wrapping, audit chain |
+| M2 Gmail intake | **Done** except the live check: parser, trusted auth-header parsing, sender flags, person book, rule filter, mailbox (history polling, threaded send), OAuth helpers, runner (backoff, heartbeat, instance lock), CLI `auth-gmail` and `smoke`. The real run (M2.5) waits for Dai's Day-0 Google setup |
+| M3 Worker | **Done**: `anthropic_api` gateway (no tools, schema output, caps, cost, privacy label, error kinds), prompt escaping, at-least-once processing with retry/refusal/cap handling, voice guide, model notes with cost estimate (about $10–15/month at 30 drafted emails a day) |
+| M4 Second Brain | **Done**: `ScopedDrive` (tree-confined, read-only, text-only), retriever (trust tagging, code-based sensitivity withholding), retrieve-then-draft with cited notes and one extra round |
+| M5 Notifications and approvals | Next: EDIT redraft, reminders/expiry notices, PAUSE and a unified command channel, then Twilio SMS (waits for A2P registration) |
+| M6 Sender and hardening | Partly built early (sender, policy, exactly-once); crash recovery, Task Scheduler, runbook, RT coverage test and repo protections remain |
+
 
 ## 1. How we work
 
@@ -196,4 +200,10 @@ Rules: one task = one small commit. CI runs the full suite on Windows and unit t
 | 2026-10-14 | **Gap:** `known_recipient` for the policy is a callable; no graph-backed implementation yet | Add a `person`-node lookup in M2.2 (sent-to history) |
 | 2026-10-14 | `GraphStore` got a read cache (mtime+size) after the approval tests exposed O(n²) YAML parsing | Keep; cache is per-process only |
 | 2026-10-14 | Actions are pinned by version tag, hashed lockfile not yet generated | Pin to commit SHAs and generate the lockfile in M6.6 (needs network to resolve) |
+| 2026-10-14 | **Found:** substring secret-key matching flagged `max_tokens`/`input_tokens`; now word-based | Fixed in M3 prerequisites; audit keeps token counters |
+| 2026-10-14 | **Found:** the Gmail marker advances after a fetch, so a temporary model failure would have lost mail | Messages are stored before any model call and retried oldest-first in batches (at-least-once) |
+| 2026-10-14 | **Found:** whitespace/case variants of the untrusted tag could break out of the prompt block | Escape widened; covered by tests |
+| 2026-10-14 | **Decision:** structured-output schema keywords (min/max/length) are stripped from the API copy and enforced locally | Verify against the live API in the first shadow-mode run |
+| 2026-10-14 | **Replan:** M4.8 (excerpt trust tagging) merged into M4.2; M4.5/M4.7 reduced to "sensitive notes are withheld by code" for v1 | Matches the simplified plan |
+| 2026-10-14 | **Accepted risk:** an attacker-chosen search term can pull non-sensitive notes into a draft | Dai sees the draft and "notes used" before approving; sensitive notes are withheld; listed in the red-team plan §8 |
 | 2026-10-14 | Design doc still mentions Pro login and `claude -p` in places | Update design in a docs task alongside M1 |
