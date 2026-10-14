@@ -10,7 +10,10 @@ from daikon.mail import InboundEmail
 from daikon.policy import DaiIdentity
 from daikon.untrusted import Untrusted
 
-_COMMAND = re.compile(r"^(OK|NO|EDIT|UNDO)\s+([23456789A-HJKMNP-Z]{4})(?:\s+(.*))?$", re.IGNORECASE)
+_PAUSE = re.compile(r"^PAUSE$", re.IGNORECASE)
+_COMMAND = re.compile(
+    r"^(OK|NO|EDIT|UNDO|RESUME)\s+([23456789A-HJKMNP-Z]{4})(?:\s+(.*))?$", re.IGNORECASE
+)
 
 
 @dataclass(frozen=True)
@@ -34,6 +37,8 @@ def authenticate_email(
     if actor not in identity.emails or not msg.auth.passed:
         return None
     first = next((ln.strip() for ln in u.text.splitlines() if ln.strip()), "")
+    if _PAUSE.match(first):
+        return VerifiedCommand("PAUSE", "", actor, "")
     m = _COMMAND.match(first)
     if not m:
         return None

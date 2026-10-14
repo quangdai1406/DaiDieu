@@ -25,6 +25,7 @@ from daikon.gateway.anthropic_api import (
 from daikon.graph.store import GraphStore
 from daikon.limiter import Limiter, default_rules
 from daikon.mail import AuthResults, InboundEmail
+from daikon.pause import PauseSwitch
 from daikon.people import PersonBook
 from daikon.pipeline import Pipeline
 from daikon.policy import DaiIdentity, OutboundPolicy
@@ -89,7 +90,8 @@ def rig(tmp_path: Path, mode: str = "live", known: set[str] | None = None,
                     people=people, rule_filter=RuleFilter(limiter, people, audit),
                     alerter=Alerter(messenger, limiter, audit),
                     retriever=(Retriever(ScopedDrive(drive, "root", clock, audit), identity.emails)
-                               if drive is not None else None))
+                               if drive is not None else None),
+                    pause=PauseSwitch(tmp_path, clock, audit, limiter))
     return Rig(pipe, mailbox, gateway, clock, approvals, store, tmp_path, people, limiter,
                messenger)
 

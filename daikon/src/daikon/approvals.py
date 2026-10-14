@@ -83,10 +83,12 @@ class ApprovalManager:
         hold: timedelta = timedelta(seconds=60),
         max_failures: int = 3,
         lockout: timedelta = timedelta(hours=1),
+        held_grace: timedelta = timedelta(hours=24),
     ) -> None:
         self._store, self._audit, self._clock = store, audit, clock
         self._ttl, self._hold = ttl, hold
         self._max_failures, self._lockout = max_failures, lockout
+        self._held_grace = held_grace
 
     # ---------- reads ----------
     def get(self, request_id: str) -> ApprovalRequest:
@@ -279,5 +281,10 @@ class ApprovalManager:
         for node in self._store.find(type="approval", status={"pending"}):
             if now >= datetime.fromisoformat(node.extra["expires_at"]):
                 self._set(node, "expired", "approval.expired")
+                expired.append(node.id)
+        for node in self._store.find(type="approval", status={"held"}):
+            hold_until = _dt(node.extra.get("hold_until"))
+            if hold_until is not None and now > hold_until + self._held_grace:
+                self._set(node, "expired", "approval.expired")  # approved long ago, never sent
                 expired.append(node.id)
         return sorted(expired)

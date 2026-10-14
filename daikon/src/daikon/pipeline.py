@@ -22,6 +22,7 @@ from daikon.graph.node import Node
 from daikon.graph.store import GraphStore
 from daikon.mail import AuthResults, InboundEmail, Mailbox
 from daikon.notifier import Notifier
+from daikon.pause import PauseSwitch
 from daikon.people import PersonBook
 from daikon.policy import DaiIdentity, OutboundPolicy
 from daikon.retrieval import Retriever
@@ -40,10 +41,12 @@ class Pipeline:
                  identity: DaiIdentity, dai_email: str, people: PersonBook,
                  rule_filter: RuleFilter, alerter: Alerter | None = None,
                  batch_size: int = 5, style: str = DEFAULT_STYLE,
-                 retriever: Retriever | None = None) -> None:
+                 retriever: Retriever | None = None,
+                 pause: PauseSwitch | None = None) -> None:
         self._mailbox, self._store, self._audit, self._clock = mailbox, store, audit, clock
         self._approvals, self._identity, self._people = approvals, identity, people
         self._filter, self._alerter, self._batch = rule_filter, alerter, batch_size
+        self._pause = pause
         self._worker = Worker(gateway, store, clock, audit, style, retriever)
         self._notifier = Notifier(mailbox, policy, dai_email)
         self._sender = Sender(mailbox, store, approvals, policy, people)
@@ -63,6 +66,8 @@ class Pipeline:
             self._audit.append("pipeline", "pipeline.expired", request_id=request_id)
 
     def release_due(self) -> None:
+        if self._pause is not None and self._pause.is_paused():
+            return  # approved drafts wait; stale ones expire in housekeeping
         now = self._clock.now()
         for req in self._approvals.held_requests():
             if req.hold_until is not None and now >= req.hold_until:
@@ -256,6 +261,24 @@ class Pipeline:
                 self._queue_edit(result.request_id, cmd.arg)
         elif cmd.verb == "UNDO":
             self._approvals.undo(cmd.code, cmd.actor)
+        elif cmd.verb == "PAUSE":
+            self._pause_now(cmd)
+        elif cmd.verb == "RESUME":
+            if self._pause is not None and self._pause.resume(cmd.code, cmd.actor):
+                self._notifier.send_to_dai(
+                    "Daikon resumed", "Resumed. Approved replies will be sent.", kind="alert"
+                )
+
+    def _pause_now(self, cmd: VerifiedCommand) -> None:
+        if self._pause is None:
+            return
+        code = self._pause.pause(cmd.actor)
+        body = (
+            "Paused: nothing will be sent to anyone but you until you resume.\n"
+            f"RESUME {code}  -> resume" if code
+            else "Already paused. Reply RESUME <code> with the code from the first pause notice."
+        )
+        self._notifier.send_to_dai("Daikon paused", body, kind="alert")
 
     def _current_hash(self, draft_id: str) -> str:
         draft = self._store.read("draft", draft_id)
