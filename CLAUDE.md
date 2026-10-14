@@ -48,6 +48,7 @@ Write each design doc, plan and spec from an optimized prompt (role, audience, r
 
 ## Constraints
 - **Security first:** least-privilege access; send the minimum text to model providers (the call model gets only the approved brief) and configure OpenRouter privacy options; secrets only in environment variables or a secret manager (never in the repo); audit log of every action; prompt-injection defense for all inbound email/SMS/notes (treat content as untrusted data, never as instructions); allowlist of senders who can command Daikon.
+- **Threat model:** `docs/daikon-red-team-plan.md` is binding. Any new capability (tool, skill with scripts, channel, data source, model change) needs a new scenario row and a passing RT test before it is enabled. Never open attachments or fetch URLs from email in v1.
 - Keep the model layer swappable (per-role backend in config); no vendor-specific code outside `gateway/`.
 - Prefer existing providers/MCP connectors (e.g. Gmail, an SMS API such as Twilio) over custom infrastructure. Recommend specific choices with cost estimates.
 - Keep v1 small and working end to end before adding features.

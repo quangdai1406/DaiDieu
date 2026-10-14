@@ -184,4 +184,8 @@ Global rules:
 - Python is acceptable as the implementation language.
 - Monthly spend cap amount for the Anthropic key (suggest starting low and raising after the first week's usage report).
 
+## 7. Red-team additions
+
+`docs/daikon-red-team-plan.md` lists 22 attack scenarios and the controls that answer them. Its §7 adds these tasks: M1.8, M2.7, M2.8, M4.8, M5.8, M5.9, M6.5, M7.7, M7b.7, M8.6, M8.7, M8.8, M8.9 and prerequisite P11 (account hardening). Gate G2 now requires **all** RT tests (RT-01 to RT-22) to pass. A quarterly red-team drill and the long-term prevention program are part of operations (red-team plan §5).
+
 **Awaiting your approval to proceed.** If you approve, I start M1 (foundations) test-first, in `daikon/`, one small commit per task.
