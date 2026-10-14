@@ -13,7 +13,7 @@ import re
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from typing import Any, Protocol
@@ -81,7 +81,8 @@ class SmsInbox:
         if self._clock.now() - m.sent > MAX_AGE:
             return None
         first = next((ln.strip() for ln in m.body.splitlines() if ln.strip()), "")
-        return parse_command(first, m.from_number)
+        cmd = parse_command(first, m.from_number)
+        return replace(cmd, channel="sms") if cmd is not None else None
 
 
 class DaiSms:

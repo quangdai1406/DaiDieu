@@ -31,6 +31,8 @@ CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"  # no 0/1/I/L/O
 CODE_LENGTH = 4
 _CODE_RE = re.compile(rf"^[{CODE_ALPHABET}]{{{CODE_LENGTH}}}$")
 _OPEN_STATES = ("pending", "held")
+_SALT_FOR = {"code_hash": "salt", "undo_hash": "undo_salt", "confirm_hash": "confirm_salt"}
+CONFIRM_TTL = timedelta(minutes=30)
 
 
 class Kind(StrEnum):
@@ -148,7 +150,7 @@ class ApprovalManager:
             return None
         found: Node | None = None
         for node in self._store.find(type="approval", status=set(states)):
-            salt = node.extra.get("salt" if field == "code_hash" else "undo_salt")
+            salt = node.extra.get(_SALT_FOR[field])
             stored = node.extra.get(field)
             if salt and stored and hmac.compare_digest(_hash(salt, code), stored):
                 found = node  # keep scanning: no early exit
@@ -270,6 +272,49 @@ class ApprovalManager:
                   sending_since=self._clock.now().isoformat())
         return Decision(True, "ok", request_id)
 
+    # ---------- second-channel confirmation (first-time or high-risk recipients) ----------
+    def require_confirmation(self, request_id: str) -> str | None:
+        """sending -> needs_confirmation. Returns a one-time code to deliver to Dai by SMS."""
+        node = self._store.read("approval", request_id)
+        if node.status != "sending":
+            return None
+        while True:
+            code = _new_code()
+            if self._match(code, "confirm_hash", ("needs_confirmation",)) is None:
+                break
+        salt = secrets.token_hex(8)
+        self._set(node, "needs_confirmation", "approval.needs_confirmation",
+                  confirm_salt=salt, confirm_hash=_hash(salt, code),
+                  confirm_expires=(self._clock.now() + CONFIRM_TTL).isoformat())
+        return code
+
+    def fail_confirmation(self, request_id: str, reason: str) -> Decision:
+        node = self._store.read("approval", request_id)
+        if node.status != "needs_confirmation":
+            return self._deny("not_waiting", "sender", request_id)
+        self._set(node, "failed", "approval.failed", failure=reason)
+        return Decision(True, "ok", request_id)
+
+    def confirm(self, code: str, actor: str) -> Decision:
+        """Dai's one-time confirmation (SMS only). needs_confirmation -> sending."""
+        if self._is_locked():
+            return self._deny("locked", actor)
+        node = self._match(code, "confirm_hash", ("needs_confirmation",))
+        if node is None:
+            self._record_failure(actor)
+            return self._deny("wrong_code", actor)
+        expires = _dt(node.extra.get("confirm_expires"))
+        if expires is None or self._clock.now() >= expires:
+            self._set(node, "expired", "approval.expired")
+            return Decision(False, "expired", node.id)
+        self._record_success()
+        self._set(node, "sending", "approval.confirmed",
+                  sending_since=self._clock.now().isoformat(), confirmed=True)
+        return Decision(True, "ok", node.id)
+
+    def is_confirmed(self, request_id: str) -> bool:
+        return bool(self._store.read("approval", request_id).extra.get("confirmed"))
+
     def _finish(self, request_id: str, state: str, action: str, **extra: Any) -> Decision:
         node = self._store.read("approval", request_id)
         if node.status != "sending":
@@ -299,6 +344,11 @@ class ApprovalManager:
         now, expired = self._clock.now(), []
         for node in self._store.find(type="approval", status={"pending"}):
             if now >= datetime.fromisoformat(node.extra["expires_at"]):
+                self._set(node, "expired", "approval.expired")
+                expired.append(node.id)
+        for node in self._store.find(type="approval", status={"needs_confirmation"}):
+            expires = _dt(node.extra.get("confirm_expires"))
+            if expires is not None and now >= expires:
                 self._set(node, "expired", "approval.expired")
                 expired.append(node.id)
         for node in self._store.find(type="approval", status={"held"}):

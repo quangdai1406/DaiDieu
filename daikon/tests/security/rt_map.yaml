@@ -20,6 +20,7 @@ RT-04:
 RT-05:
   tests:
     - tests/security/test_policy.py::test_first_time_recipient_needs_second_channel
+    - tests/e2e/test_confirmation.py::test_confirm_by_email_is_ignored
     - tests/security/test_approvals.py::test_undo_during_hold_blocks_sending
     - tests/e2e/test_skeleton.py::test_undo_during_hold_stops_the_send
 RT-06:

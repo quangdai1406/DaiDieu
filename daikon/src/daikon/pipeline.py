@@ -32,7 +32,7 @@ from daikon.policy import OutboundPolicy
 from daikon.retrieval import Retriever
 from daikon.sender import CHECK_AFTER, Sender
 from daikon.senders import analyze_sender
-from daikon.sms import SmsInbox
+from daikon.sms import DaiSms, SmsInbox
 from daikon.style import DEFAULT_STYLE
 from daikon.untrusted import Source, Untrusted, normalize_email, normalize_text
 from daikon.worker import DraftFailed, Worker
@@ -49,14 +49,16 @@ class Pipeline:
                  batch_size: int = 5, style: str = DEFAULT_STYLE,
                  retriever: Retriever | None = None,
                  pause: PauseSwitch | None = None, limiter: Limiter | None = None,
-                 sms_inbox: SmsInbox | None = None) -> None:
+                 sms_inbox: SmsInbox | None = None, dai_sms: DaiSms | None = None) -> None:
         self._mailbox, self._store, self._audit, self._clock = mailbox, store, audit, clock
         self._approvals, self._identity, self._people = approvals, identity, people
         self._filter, self._alerter, self._batch = rule_filter, alerter, batch_size
         self._pause, self._limiter, self._sms = pause, limiter, sms_inbox
         self._worker = Worker(gateway, store, clock, audit, style, retriever)
         self._notifier = Notifier(mailbox, policy, dai_email)
-        self._sender = Sender(mailbox, store, approvals, policy, people)
+        self._dai_sms = dai_sms
+        self._sender = Sender(mailbox, store, approvals, policy, people,
+                              self._ask_confirmation if dai_sms is not None else None)
 
     # ---------- one poll ----------
     def poll(self) -> None:
@@ -86,6 +88,34 @@ class Pipeline:
                           "A reply to {to} is waiting for your answer. Reply OK, EDIT or NO "
                           "using the code in my earlier message."):
                 self._approvals.mark_reminded(req.id)
+
+    def _ask_confirmation(self, request_id: str, code: str) -> bool:
+        if self._dai_sms is None:
+            return False
+        req = self._approvals.get(request_id)
+        draft = self._store.read("draft", req.subject_id)
+        to = ", ".join(str(r) for r in draft.extra["recipients"])[:80]
+        sent = self._dai_sms.send(
+            f"Daikon: first reply to a new person ({to}). Reply CONFIRM {code} to send it. "
+            "Ignore this to cancel. Valid 30 min.")
+        self._audit.append("pipeline", "pipeline.confirmation_asked", request_id=request_id,
+                           delivered=sent)
+        return sent
+
+    def _confirm(self, cmd: VerifiedCommand) -> None:
+        if cmd.channel != "sms":  # defense in depth: email can never confirm
+            self._audit.append("pipeline", "pipeline.confirm_wrong_channel", by=cmd.actor)
+            return
+        if self._pause is not None and self._pause.is_paused():
+            self._notifier.send_to_dai("Daikon: paused, not sent",
+                                       "Sending is paused, so the confirmed reply was not sent. "
+                                       "It will expire; ask me to redraft after RESUME.",
+                                       kind="alert")
+            return
+        result = self._approvals.confirm(cmd.code, cmd.actor)
+        if result.ok and result.request_id:
+            if not self._sender.resume_confirmed(result.request_id):
+                self._tell_if_refused(result.request_id)
 
     def _tell_if_refused(self, request_id: str) -> None:
         if self._approvals.get(request_id).state != "failed":
@@ -319,6 +349,8 @@ class Pipeline:
                     f"UNDO {result.undo_code}  -> cancel",
                     kind="alert",
                 )
+        elif cmd.verb == "CONFIRM":
+            self._confirm(cmd)
         elif cmd.verb == "NO":
             self._approvals.reject(cmd.code, cmd.actor)
         elif cmd.verb == "EDIT":

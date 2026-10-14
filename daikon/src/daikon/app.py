@@ -118,7 +118,8 @@ def build_app(
         approvals=approvals, policy=policy, identity=config.identity, dai_email=config.dai_email,
         people=people, rule_filter=RuleFilter(limiter, people, audit), alerter=alerter,
         style=load_style(config.style_file), retriever=retriever,
-        pause=PauseSwitch(data, clock, audit, limiter), limiter=limiter, sms_inbox=sms_inbox,
+        pause=PauseSwitch(data, clock, audit, limiter), limiter=limiter,
+        sms_inbox=sms_inbox, dai_sms=dai_sms,
     )
     runner = Runner(pipeline, store, clock, alerter, audit, sleep=sleep,
                     daily=lambda: daily_backup(data, clock.now()))

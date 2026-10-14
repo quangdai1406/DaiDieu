@@ -88,6 +88,7 @@ counts, and only from you (mail that fails SPF/DKIM/DMARC is ignored).
 | `UNDO 9XQ3` | Cancel during that 60 seconds (the code is in the "approved" notice) |
 | `NO 7K2F` | Discard |
 | `EDIT 7K2F make it shorter and decline Friday` | New draft, new code (up to 5 revisions) |
+| `CONFIRM 5HT9` | **By text message only.** Sent to your phone for the first reply to a new person; valid 30 minutes, one use. Ignore it to cancel. Email cannot confirm |
 | `PAUSE` | Stop all sends to other people; Daikon replies with a resume code |
 | `RESUME 4MZ8` | Resume (3 tries an hour) |
 

@@ -12,7 +12,7 @@ from daikon.untrusted import Untrusted
 
 _PAUSE = re.compile(r"^PAUSE$", re.IGNORECASE)
 _COMMAND = re.compile(
-    r"^(OK|NO|EDIT|UNDO|RESUME)\s+([23456789A-HJKMNP-Z]{4})(?:\s+(.*))?$", re.IGNORECASE
+    r"^(OK|NO|EDIT|UNDO|RESUME|CONFIRM)\s+([23456789A-HJKMNP-Z]{4})(?:\s+(.*))?$", re.IGNORECASE
 )
 
 
@@ -22,6 +22,7 @@ class VerifiedCommand:
     code: str
     actor: str
     arg: str
+    channel: str = "email"
 
 
 def sender_address(msg: InboundEmail) -> str:
@@ -37,7 +38,10 @@ def authenticate_email(
     if actor not in identity.emails or not msg.auth.passed:
         return None
     first = next((ln.strip() for ln in u.text.splitlines() if ln.strip()), "")
-    return parse_command(first, actor)
+    cmd = parse_command(first, actor)
+    if cmd is not None and cmd.verb == "CONFIRM":
+        return None  # a second-channel confirmation must come by SMS, never by email
+    return cmd
 
 
 def parse_command(first_line: str, actor: str) -> VerifiedCommand | None:
