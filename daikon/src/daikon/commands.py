@@ -37,9 +37,14 @@ def authenticate_email(
     if actor not in identity.emails or not msg.auth.passed:
         return None
     first = next((ln.strip() for ln in u.text.splitlines() if ln.strip()), "")
-    if _PAUSE.match(first):
+    return parse_command(first, actor)
+
+
+def parse_command(first_line: str, actor: str) -> VerifiedCommand | None:
+    """Parse one already-authenticated line. Authentication is the caller's job."""
+    if _PAUSE.match(first_line):
         return VerifiedCommand("PAUSE", "", actor, "")
-    m = _COMMAND.match(first)
+    m = _COMMAND.match(first_line)
     if not m:
         return None
     arg = (m.group(3) or "").strip()

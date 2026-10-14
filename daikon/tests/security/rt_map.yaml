@@ -28,6 +28,9 @@ RT-07:
   tests:
     - tests/security/test_policy.py::test_sms_to_dai_is_capped
     - tests/security/test_policy.py::test_send_cap_denies_and_denial_consumes_nothing
+    - tests/unit/test_sms.py::test_other_numbers_are_ignored
+    - tests/unit/test_sms.py::test_old_messages_are_not_replayed
+    - tests/e2e/test_sms_flow.py::test_ok_from_a_stranger_number_does_nothing
 RT-08:
   deferred: v1.1
 RT-09:

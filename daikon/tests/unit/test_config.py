@@ -173,3 +173,12 @@ def test_hold_seconds_defaults_to_60_and_accepts_10_to_600(tmp_path: Path) -> No
 def test_hold_seconds_out_of_range_is_rejected(tmp_path: Path, bad: str) -> None:
     with pytest.raises(ConfigError, match="hold_seconds"):
         load_config(write(tmp_path, GOOD.format(data=tmp_path / "d") + f"hold_seconds: {bad}\n"))
+
+
+def test_twilio_number_is_optional_and_must_be_e164(tmp_path: Path) -> None:
+    text = GOOD.format(data=tmp_path / "d")
+    assert load_config(write(tmp_path, text)).twilio_number is None
+    ok = load_config(write(tmp_path, text + 'twilio_number: "+15550009999"\n'))
+    assert ok.twilio_number == "+15550009999"
+    with pytest.raises(ConfigError, match="twilio_number"):
+        load_config(write(tmp_path, text + 'twilio_number: "555-1234"\n'))

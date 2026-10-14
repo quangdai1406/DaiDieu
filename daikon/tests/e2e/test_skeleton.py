@@ -69,7 +69,7 @@ class Rig:
 
 def rig(tmp_path: Path, mode: str = "live", known: set[str] | None = None,
         reply: dict[str, Any] | None = None, limits: Limits | None = None,
-        script: list[Any] | None = None, drive: Any = None) -> Rig:
+        script: list[Any] | None = None, drive: Any = None, sms: Any = None) -> Rig:
     clock = FakeClock(T0)
     store = GraphStore(tmp_path / "graph")
     audit = AuditLog(tmp_path / "audit", clock)
@@ -92,7 +92,8 @@ def rig(tmp_path: Path, mode: str = "live", known: set[str] | None = None,
                     alerter=Alerter(messenger, limiter, audit),
                     retriever=(Retriever(ScopedDrive(drive, "root", clock, audit), identity.emails)
                                if drive is not None else None),
-                    pause=PauseSwitch(tmp_path, clock, audit, limiter), limiter=limiter)
+                    pause=PauseSwitch(tmp_path, clock, audit, limiter), limiter=limiter,
+                    sms_inbox=sms)
     return Rig(pipe, mailbox, gateway, clock, approvals, store, tmp_path, people, limiter,
                messenger)
 

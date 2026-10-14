@@ -32,6 +32,7 @@ from daikon.policy import OutboundPolicy
 from daikon.retrieval import Retriever
 from daikon.sender import CHECK_AFTER, Sender
 from daikon.senders import analyze_sender
+from daikon.sms import SmsInbox
 from daikon.style import DEFAULT_STYLE
 from daikon.untrusted import Source, Untrusted, normalize_email, normalize_text
 from daikon.worker import DraftFailed, Worker
@@ -47,11 +48,12 @@ class Pipeline:
                  rule_filter: RuleFilter, alerter: Alerter | None = None,
                  batch_size: int = 5, style: str = DEFAULT_STYLE,
                  retriever: Retriever | None = None,
-                 pause: PauseSwitch | None = None, limiter: Limiter | None = None) -> None:
+                 pause: PauseSwitch | None = None, limiter: Limiter | None = None,
+                 sms_inbox: SmsInbox | None = None) -> None:
         self._mailbox, self._store, self._audit, self._clock = mailbox, store, audit, clock
         self._approvals, self._identity, self._people = approvals, identity, people
         self._filter, self._alerter, self._batch = rule_filter, alerter, batch_size
-        self._pause, self._limiter = pause, limiter
+        self._pause, self._limiter, self._sms = pause, limiter, sms_inbox
         self._worker = Worker(gateway, store, clock, audit, style, retriever)
         self._notifier = Notifier(mailbox, policy, dai_email)
         self._sender = Sender(mailbox, store, approvals, policy, people)
@@ -64,6 +66,9 @@ class Pipeline:
                 self._handle_dai_message(msg, u)
             else:
                 self._receive(msg, u)
+        if self._sms is not None:
+            for cmd in self._sms.fetch_commands():
+                self._apply(cmd)
         self._process_pending()
 
     def housekeeping(self) -> None:

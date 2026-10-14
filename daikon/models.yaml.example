@@ -13,6 +13,10 @@ identity:
 # dai_only: Daikon sends only to Dai (shadow mode). Switch to "live" only after gates G1 and G2.
 outbound_mode: dai_only
 
+# Daikon's Twilio number (E.164). Leave out until the A2P registration clears; then store
+# twilio_account_sid, twilio_api_key_sid and twilio_api_key_secret with `set-secret`.
+# twilio_number: "+15550009999"
+
 # Seconds an approved reply waits before sending (your time to say UNDO). 10 to 600.
 hold_seconds: 60
 

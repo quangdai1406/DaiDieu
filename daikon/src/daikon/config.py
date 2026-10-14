@@ -65,6 +65,7 @@ class Config:
     second_brain_root_id: str | None = None
     style_file: Path | None = None
     hold_seconds: int = 60
+    twilio_number: str | None = None
 
 
 def _reject_secret_keys(node: Any, path: str = "") -> None:
@@ -146,9 +147,15 @@ def load_config(path: Path) -> Config:
     hold = raw.get("hold_seconds", 60)
     if not isinstance(hold, int) or isinstance(hold, bool) or not 10 <= hold <= 600:
         raise ConfigError(f"hold_seconds must be a whole number from 10 to 600, got {hold!r}")
+    number = raw.get("twilio_number")
+    if number is not None and not (
+        isinstance(number, str) and re.fullmatch(r"\+[1-9]\d{7,14}", number)
+    ):
+        raise ConfigError("twilio_number must look like +15551234567")
     style = raw.get("style_file")
     return Config(
         data_dir=data_dir, roles=roles, limits=limits, identity=identity, dai_email=dai_email,
         outbound_mode=mode, second_brain_root_id=raw.get("second_brain_root_id") or None,
         style_file=(data_dir / str(style)) if style else None, hold_seconds=hold,
+        twilio_number=number,
     )

@@ -53,6 +53,8 @@ In `models.yaml` set `identity` (your own email addresses and mobile number) and
 
 ```powershell
 python -m daikon set-secret anthropic_api_key        # paste the key when prompted
+# Only after the Twilio A2P registration clears (then also set twilio_number in models.yaml):
+# python -m daikon set-secret twilio_account_sid ; twilio_api_key_sid ; twilio_api_key_secret
 python -m daikon auth-gmail --client-secrets C:\path\to\client_secret.json   # sign in AS DAIKON
 python -m daikon smoke --dai-email you@example.com   # reads one message, sends you one test mail
 python -m daikon doctor                               # every line should say ok

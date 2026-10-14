@@ -34,9 +34,11 @@ from daikon.policy import OutboundPolicy
 from daikon.retrieval import Retriever
 from daikon.runner import Runner
 from daikon.secretstore import SecretNotFoundError, SecretStore
+from daikon.sms import DaiSms, SmsInbox, SmsTransport, TwilioTransport
 from daikon.style import load_style
 
 REQUIRED_SECRETS = ("anthropic_api_key", "gmail_token")
+TWILIO_SECRETS = ("twilio_account_sid", "twilio_api_key_sid", "twilio_api_key_secret")
 
 
 @dataclass
@@ -59,6 +61,7 @@ def build_app(
     mailbox: Mailbox | None = None,
     gateway: Gateway | None = None,
     drive_api: DriveApi | None = None,
+    sms_transport: SmsTransport | None = None,
     sleep: Callable[[float], None] = time.sleep,
 ) -> App:
     data = config.data_dir
@@ -98,13 +101,24 @@ def build_app(
             drive_api = GoogleDriveApi(build_drive_service(creds))
         drive = ScopedDrive(drive_api, config.second_brain_root_id, clock, audit)
         retriever = Retriever(drive, config.identity.emails)
-    alerter = Alerter(DaiMessenger(Notifier(mailbox, policy, config.dai_email)), limiter, audit)
+    sms_inbox: SmsInbox | None = None
+    dai_sms: DaiSms | None = None
+    if config.twilio_number and config.identity.phones:
+        if sms_transport is None:
+            sms_transport = TwilioTransport(
+                secrets.get("twilio_account_sid"), secrets.get("twilio_api_key_sid"),
+                secrets.get("twilio_api_key_secret"), config.twilio_number)
+        sms_inbox = SmsInbox(sms_transport, store, config.identity, config.twilio_number,
+                             clock, audit)
+        dai_sms = DaiSms(sms_transport, policy, sorted(config.identity.phones)[0])
+    alerter = Alerter(
+        DaiMessenger(Notifier(mailbox, policy, config.dai_email), dai_sms), limiter, audit)
     pipeline = Pipeline(
         mailbox=mailbox, store=store, audit=audit, clock=clock, gateway=gateway,
         approvals=approvals, policy=policy, identity=config.identity, dai_email=config.dai_email,
         people=people, rule_filter=RuleFilter(limiter, people, audit), alerter=alerter,
         style=load_style(config.style_file), retriever=retriever,
-        pause=PauseSwitch(data, clock, audit, limiter), limiter=limiter,
+        pause=PauseSwitch(data, clock, audit, limiter), limiter=limiter, sms_inbox=sms_inbox,
     )
     runner = Runner(pipeline, store, clock, alerter, audit, sleep=sleep,
                     daily=lambda: daily_backup(data, clock.now()))
@@ -138,7 +152,7 @@ def doctor(config: Config, secrets: SecretStore, clock: Clock) -> DoctorReport:
         r.warn("outbound_mode is LIVE: approved replies are sent to other people")
     ident = config.identity
     r.note(f"Dai identities: {len(ident.emails)} email(s), {len(ident.phones)} phone(s)")
-    for name in REQUIRED_SECRETS:
+    for name in REQUIRED_SECRETS + (TWILIO_SECRETS if config.twilio_number else ()):
         try:
             secrets.get(name)
             r.note(f"secret present: {name}")
