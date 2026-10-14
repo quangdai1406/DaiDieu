@@ -82,3 +82,11 @@ RT-21:
     - tests/e2e/test_skeleton.py::test_tampering_with_the_draft_after_the_digest_blocks_approval
 RT-22:
   deferred: v2
+RT-23:
+  deferred: v2
+RT-24:
+  deferred: v2
+RT-25:
+  deferred: v2
+RT-26:
+  deferred: v2

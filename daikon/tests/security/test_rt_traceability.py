@@ -36,7 +36,7 @@ def test_the_plan_lists_rt_01_to_rt_22() -> None:
 
 
 def test_every_scenario_in_the_plan_has_an_entry_in_the_map() -> None:
-    ids = {f"RT-{i:02d}" for i in range(1, 23)}
+    ids = set(re.findall(r"RT-\d{2}", PLAN))
     assert ids == set(RT_MAP), f"missing: {ids - set(RT_MAP)}, unknown: {set(RT_MAP) - ids}"
 
 

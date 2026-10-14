@@ -50,6 +50,11 @@ Legend: **Have** = already in the design or plan. **Add** = new control from thi
 | A21 | Race or replay: reuse old codes, double send, edit between approval and send | Wrong content sent | Version, hash, single send (Have) | Covered; **Add:** a regression test in CI | RT-04, RT-21 |
 | A22 | Phase 2 voice: caller social-engineers Daikon, or a cloned voice of Dai tries to command him; premium or international number fraud | Data leak, cost, fraud | Brief-only call model, approved goal (Have) | **Add:** Daikon never authenticates anyone by voice; no commands by voice; allowlist of numbers he may call; block premium-rate and unapproved international prefixes; per-call and daily minute caps; call model has no tools | RT-22 |
 
+| A23 | Phase 2 call booking: a callee's words, saved as call notes, later steer a different call (stored prompt injection) | Wrong commitments, data leak | Notes are untrusted data (Have) | **Add:** call notes are stored as structured fields with length caps, never as free instructions; read-back is wrapped as untrusted; the next call still needs an approved brief | RT-23 (deferred to v2) |
+| A24 | Person A's health, insurance or ID details reused or disclosed on a call for person B | Privacy breach | Brief-only model (Have) | **Add:** person-specific fields are tagged and excluded from reuse; only service-level knowledge is carried over; sensitive fields need explicit per-call approval | RT-24 (deferred to v2) |
+| A25 | Daikon promises a no-show fee or price that nobody approved or can honor | Fraud, dispute | Approved brief (Have) | **Add:** the fee statement appears only if the approved brief contains it; any other money term is refused | RT-25 (deferred to v2) |
+| A26 | Call report or notes copied to the Second Brain contain others' sensitive data | Leak through the Second Brain | Sensitivity withholding by code (Have) | **Add:** records are filed by Dai's task, not Daikon; call-log folder is treated as sensitive and withheld from drafts for unrelated email | RT-26 (deferred to v2) |
+
 ## 4. Detection and response
 
 **Alerts to Dai (SMS, rate-limited):** a burst of rejected approvals; sends to a never-seen recipient; spend over 80% of the monthly cap; audit chain mismatch; Daikon offline over 24 hours; token or OAuth change; skill change pending; Lane 2 job outside limits.
