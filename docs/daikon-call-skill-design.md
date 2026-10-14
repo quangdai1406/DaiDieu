@@ -330,7 +330,8 @@ Set a spend limit on the OpenRouter key and a per-call and daily minute cap.
 
 1. ~~Where call records live~~ **Decided:** `10 Daikon Calls` in the Second Brain, with `Graph - Daikon Calls` in `00 Control`.
 2. ~~Callback requests~~ **Decided:** every call asks the office to call back Daikon's own number (§8.1 step 7); extra numbers they call from are added only with your approval (§7.4).
-2a. The Saturday task must be extended to file Daikon Calls handovers (instruction text in the Log `2026-10-14 - Daikon Calls setup`). Which Handovers folder should Daikon's reports go to?
+2a. The Saturday task must be extended to file Daikon Calls handovers (paste-ready text below). Which Handovers folder should Daikon's reports go to?
+    Paste-ready addition for the Saturday task: "Also file handovers tagged Daikon Calls (file name contains _handover_daikon_calls_) into the folder 10 Daikon Calls. Follow Hub - Daikon Calls and Templates - Daikon Calls: create or update the Provider, Call, Inbound message and Case pages; update Entities - Daikon Calls; add the nodes and stated edges from the handover's Graph lines to Graph - Daikon Calls, using opaque case IDs only and never names. Never store date of birth, insurance or member numbers, card numbers, ID numbers or detailed health information. Update the Index, log every change with a confidence score, and put anything unclear under Needs Dai's decision."
 2b. Offices may also **text** Daikon's number (appointment reminders). Treat texts from a number on the callback list as untrusted information relayed to you (read-only), and ignore all others? Recommended: yes, later, with its own red-team row.
 3. Inbound unknown callers: a fixed message then hang up (recommended), or voicemail-only recording of a short message that you review?
 4. Which businesses should be the first test (a friendly business you know)?
