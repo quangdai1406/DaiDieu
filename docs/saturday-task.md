@@ -1,6 +1,6 @@
 # Saturday task: "Second Brain + Memory weekly ingest and lint"
 
-Full prompt for Dai's scheduled task, **updated 2026-10-14 to file Daikon's call handovers** (new STEP 2F, plus small additions marked "(added 2026-10-14)").
+Full prompt for Dai's scheduled task, **updated and applied 2026-10-14 to file Daikon's call handovers** (new STEP 2F, plus small additions marked "(added 2026-10-14)").
 
 | Item | Value |
 |---|---|
@@ -10,7 +10,7 @@ Full prompt for Dai's scheduled task, **updated 2026-10-14 to file Daikon's call
 | Connectors | Google Drive, Claude Docs, Gmail, Google Calendar, Claude Code Remote, Context7 |
 | Model | `claude-sonnet-5-5` |
 | Source of the unchanged text | The live trigger, read on 2026-10-14 |
-| Status | **Not applied.** The live task still has the old prompt. Paste the block below into the task (or ask Claude to apply it with `update_trigger`) after you approve it |
+| Status | **Applied on 2026-10-14** (the live prompt was checked character for character against the block below; schedule, connectors, model and notifications unchanged). Next run: Saturday 2026-10-17, 8:13 AM ET |
 
 ## What changed compared with the live task
 
