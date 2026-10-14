@@ -1,0 +1,35 @@
+# Copy to %USERPROFILE%\daikon-data\models.yaml and edit. Never put API keys in this file;
+# keys live in the OS credential store (see docs/runbook.md).
+#
+# Prices are USD per million tokens, copied from Anthropic's pricing page on 2026-10-06
+# (cached in the API reference). Check them again before relying on the monthly cap.
+# data_dir: C:\Users\YOU\daikon-data   # optional; defaults to your user folder\daikon-data
+
+roles:
+  # Cheap, fast classification and summaries (small prompts, short answers).
+  triage:
+    backend: anthropic_api
+    model: claude-haiku-5-5
+    data_class: cloud
+    max_tokens: 800
+    effort: low
+    timeout_s: 30
+    price: {input: 0.10, output: 0.50, cache_read: 0.01}
+  # Replies in Dai's voice. Start here, move to a stronger model only if G1 shows weak drafts.
+  draft:
+    backend: anthropic_api
+    model: claude-sonnet-5-5
+    data_class: cloud
+    max_tokens: 2500
+    effort: medium
+    timeout_s: 60
+    price: {input: 2.00, output: 10.00, cache_read: 0.20}
+
+limits:
+  model_runs_per_day: 200
+  dollars_per_month: 15
+  sends_per_day: 30
+  sms_per_day: 20
+  approvals_per_day: 50
+  per_sender_per_hour: 10
+  alerts_per_day: 20
