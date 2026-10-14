@@ -61,6 +61,8 @@ P1 Daikon Gmail account · P2 Google Cloud project, Gmail + Drive APIs, OAuth cl
 
 **Later releases only:** `daikon-jobs` Windows user (v1.2); Ollama/LM Studio and 50 labeled emails (v1.3).
 
+The step-by-step version for Dai is `docs/day-0-checklist.md`.
+
 ## 5. Repository layout and rules
 
 ```
@@ -214,3 +216,4 @@ Rules: one task = one small commit. CI runs the full suite on Windows and unit t
 | 2026-10-14 | **Replan:** the `needs_confirmation` flow needs a second channel (SMS), so it moves behind M5.5. Meanwhile an approved reply that policy refuses now tells Dai ("not sent, reply yourself") instead of failing silently | Remaining gaps: configurable hold length, SMS, M6.6, lockfile |
 | 2026-10-14 | **Fixed gap:** hold length is now `hold_seconds` in `models.yaml` (10-600, default 60) and the "approved" notice reads it from `ApprovalManager` | Remaining: SMS (M5.5), M6.6, lockfile and Action pins, live checks |
 | 2026-10-14 | **Built:** M5.5 SMS channel: `SmsInbox` (From must be Dai's number, To our number, under 2h old, once per SID, body never stored), `DaiSms` through policy, `TwilioTransport` over REST with a scoped API key, config `twilio_number`, doctor checks the three Twilio secrets. **Residual risk:** SMS From can be spoofed in rare cases; mitigated because every command except PAUSE needs a one-time code only Dai received | Untested against live Twilio until Day-0 + A2P |
+| 2026-10-14 | **Decided:** (a) no-show fee = Daikon prepays the service, $5 kept on no-show, rest refunded: needs a payment method, limits and a red-team row (RT-25 extended) before phase 2; (b) first-time recipient confirmation = one-time text to Dai's phone, built after SMS is live (`needs_confirmation` state). Day-0 steps in `docs/day-0-checklist.md` | Next code task: the confirmation flow, once SMS can be tested |
