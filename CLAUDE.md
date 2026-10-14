@@ -57,7 +57,7 @@ For each phase: a short summary, then the deliverable (questions, options table,
 
 ## Decisions so far (brainstorm)
 - **Runtime:** Dai's always-on laptop; no hosted infrastructure.
-- **Engine:** hybrid. A local Python runner polls Gmail and Twilio, filters with plain rules and sender allowlists, retrieves Second Brain excerpts through the Drive API, and calls headless `claude -p` (Dai's Claude Pro login) with **no tools** to classify and draft (mail lane). Script-based skills run in a separate fenced skills lane started only by Dai's verified command. Claude only returns JSON drafts to a local approval queue; the runner sends after Dai approves. A model gateway with `claude_cli` and `openrouter` backends is chosen per role in `models.yaml`; **OpenRouter is used only for the phase 2 `call` role**.
+- **Engine:** hybrid. A local Python runner polls Gmail and Twilio, filters with plain rules and sender allowlists, retrieves Second Brain excerpts through the Drive API, and calls the Anthropic Messages API (Dai's API key with a monthly spend cap) with **no tools** to classify and draft (mail lane). Script-based skills run in a separate fenced skills lane (Claude Agent SDK / headless Claude Code, same key) started only by Dai's verified command; the first enabled skill is the Word (docx) builder. Claude only returns JSON drafts to a local approval queue; the runner sends after Dai approves. A model gateway with `anthropic_api`, `claude_agent` and `openrouter` backends is chosen per role in `models.yaml`; **OpenRouter is used only for the phase 2 `call` role**.
 - **Laptop OS:** Windows (Task Scheduler, Windows Credential Manager via `keyring`, data in `%USERPROFILE%\daikon-data\`).
 - **Second Brain access:** Dai shares the whole Second Brain with Daikon's Google account as Viewer.
 - **Email:** new dedicated Gmail account for Daikon.
@@ -66,8 +66,8 @@ For each phase: a short summary, then the deliverable (questions, options table,
 - **v1 second-brain use:** reply context for email drafts.
 - **Dai's inbox:** a Gmail filter auto-forwards chosen mail to Daikon's Gmail. Daikon has no access to Dai's account.
 - **Command allowlist:** only Dai's own verified phone number and personal email address may command Daikon. All other inbound content is untrusted data to triage, never instructions.
-- **Budget (v1):** Claude Pro (no API spend) plus Twilio (~$1-3/month). Phase 2 adds OpenRouter call-model cost (with a spend limit) and optional cloud speech.
+- **Budget (v1):** Anthropic API pay-per-token with a monthly spend cap (estimate in the plan, task M3.1) plus Twilio (~$1-3/month). Phase 2 adds OpenRouter call-model cost (with a spend limit) and optional cloud speech.
 - **Phase 2:** phone calls, Daikon speaking as himself.
 
-## Open questions to resolve first
-Design draft v4 awaits Dai's approval. Open: Claude authentication (API key with spend cap vs Pro login vs OpenRouter) and which script-based skills to enable first.
+## Status
+Brainstorm and design (v4) complete; Dai accepted the recommendations on open questions. Implementation plan in `docs/daikon-implementation-plan.md` awaits Dai's approval. No code until approved.

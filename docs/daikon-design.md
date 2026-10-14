@@ -71,7 +71,7 @@ A mail that asks for a script-based task never starts Lane 2 by itself. Daikon d
 
 | Role | Backend (v1 default) | Used for |
 |---|---|---|
-| `triage`, `draft`, `research` | `claude_cli` (headless Claude Code on Dai's Pro login) | Classify, summarize, search terms, drafts, skill tasks |
+| `triage`, `draft`, `research` | `anthropic_api` (Messages API, no tools); script skills use `claude_agent` in the skills lane | Classify, summarize, search terms, drafts, skill tasks |
 | `call` (phase 2) | `openrouter` | Live phone conversation, see §9 |
 
 Any role can later be pointed at the other backend, or at an Anthropic API key, by editing config only.
@@ -264,6 +264,7 @@ One-time: Twilio A2P 10DLC registration (US) before reliable SMS; allow several 
 | R12 | Whole Second Brain visible to Daikon increases the impact of a leaked token | Narrow OAuth scope to `drive.readonly`, keep tokens in Credential Manager, restrict Viewer download/copy |
 
 **Resolved:** skills source is `09 Claude Skills`, filled by Dai's weekly Second Brain task.
+**Resolved (Dai accepted recommendations):** Q5 Claude access is an Anthropic API key with a monthly spend cap. The mail lane uses the Messages API directly with no tools (backend `anthropic_api`); the skills lane uses the Claude Agent SDK / headless Claude Code with the same key (backend `claude_agent`); `claude_cli` on a Pro login is dropped. Q6 the first script skill enabled is the Word (docx) builder. See `docs/daikon-implementation-plan.md` §0.
 
 **Open questions for Dai**
 - **Q5:** Claude authentication for Daikon: API key with a spend cap (recommended), Pro login for a prototype only, or OpenRouter? (R1)
