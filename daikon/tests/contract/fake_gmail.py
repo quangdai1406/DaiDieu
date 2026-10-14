@@ -77,9 +77,11 @@ class _Messages:
     def __init__(self, g: FakeGmail) -> None:
         self.g = g
 
-    def list(self, userId: str, q: str, pageToken: str | None = None) -> _Req:  # noqa: N803
+    def list(self, userId: str, q: str = "", pageToken: str | None = None,  # noqa: N803
+             maxResults: int | None = None) -> _Req:  # noqa: N803
         self.g.calls.append("messages.list")
-        return _Req(lambda: {"messages": [{"id": i, "threadId": i} for i in self.g.listed_ids]})
+        ids = self.g.listed_ids[:maxResults] if maxResults else self.g.listed_ids
+        return _Req(lambda: {"messages": [{"id": i, "threadId": i} for i in ids]})
 
     def get(self, userId: str, id: str, format: str = "full",  # noqa: A002, N803
             metadataHeaders: list[str] | None = None) -> _Req:  # noqa: N803
