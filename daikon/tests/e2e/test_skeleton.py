@@ -440,3 +440,17 @@ def test_the_voice_guide_is_part_of_the_drafting_prompt(tmp_path: Path) -> None:
     r.pipe.poll()
     system, _ = r.gateway.calls[0]
     assert "Voice and style" in system and "short" in system.lower()
+
+
+def test_dai_is_told_when_an_approved_reply_is_refused_by_policy(tmp_path: Path) -> None:
+    r = rig(tmp_path, known=set())
+    r.inbound("m1", "stranger@example.net", "Hello", subject="Intro")
+    r.pipe.poll()
+    r.inbound("c1", DAI, f"OK {r.digest_code()}")
+    r.pipe.poll()
+    r.clock.advance(timedelta(seconds=61))
+    r.pipe.release_due()
+    r.pipe.release_due()
+    notes = [m for m in r.sent_to(DAI) if "not sent" in m.subject]
+    assert len(notes) == 1 and "Intro" in notes[0].subject
+    assert "stranger@example.net" in notes[0].body and "reply to them yourself" in notes[0].body

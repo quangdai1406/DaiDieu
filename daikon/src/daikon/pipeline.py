@@ -82,6 +82,18 @@ class Pipeline:
                           "using the code in my earlier message."):
                 self._approvals.mark_reminded(req.id)
 
+    def _tell_if_refused(self, request_id: str) -> None:
+        if self._approvals.get(request_id).state != "failed":
+            return
+        try:
+            self._tell(request_id, "Daikon: approved reply was not sent: {subject}",
+                       "I did not send your reply to {to}: my safety rules blocked it (for "
+                       "example a first-time recipient, which needs a second confirmation "
+                       "channel that is not set up yet). Please reply to them yourself.")
+        except Exception as exc:  # noqa: BLE001 - one failed notice must not stop other sends
+            self._audit.append("pipeline", "pipeline.notice_failed", request_id=request_id,
+                               error=type(exc).__name__)
+
     def _tell(self, request_id: str, subject: str, body: str) -> bool:
         req = self._approvals.get(request_id)
         if req.kind is not Kind.SEND:
@@ -116,7 +128,8 @@ class Pipeline:
         now = self._clock.now()
         for req in self._approvals.held_requests():
             if req.hold_until is not None and now >= req.hold_until:
-                self._sender.send(req.id)
+                if not self._sender.send(req.id):
+                    self._tell_if_refused(req.id)
 
     # ---------- store phase (no model calls) ----------
     def _receive(self, msg: InboundEmail, u: Untrusted) -> None:
