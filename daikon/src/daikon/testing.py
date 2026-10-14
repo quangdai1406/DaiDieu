@@ -45,8 +45,13 @@ class FakeGateway:
         "sensitivity_flags": [],
     }
 
-    def __init__(self, reply: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self, reply: dict[str, Any] | None = None, script: list[Any] | None = None
+    ) -> None:
+        """``script`` items are consumed one per call: an Exception is raised, a dict is
+        returned, ``None`` returns the default reply. When it runs out, the default is used."""
         self.reply = dict(reply if reply is not None else self.DEFAULT)
+        self.script = list(script or [])
         self.calls: list[tuple[str, str]] = []
         self.schemas: list[Mapping[str, Any] | None] = []
 
@@ -60,7 +65,10 @@ class FakeGateway:
     ) -> dict[str, Any]:
         self.calls.append((system, user))
         self.schemas.append(schema)
-        return dict(self.reply)
+        step = self.script.pop(0) if self.script else None
+        if isinstance(step, Exception):
+            raise step
+        return dict(step) if isinstance(step, dict) else dict(self.reply)
 
 
 @dataclass

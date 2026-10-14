@@ -38,3 +38,22 @@ def build_digest(
         f"EDIT {code} <what to change>",
     ]
     return f"Daikon: reply needed for {defang(msg.subject)[:60]}", "\n".join(lines)
+
+
+_REASONS = {
+    "refusal": "The model declined to draft a reply for this email.",
+    "bad_output": "The model's answer could not be used after two tries.",
+}
+
+
+def build_attention(msg: InboundEmail, flags: frozenset[str], reason: str) -> tuple[str, str]:
+    """Note for an email Daikon could not draft. No codes: there is nothing to approve."""
+    lines = [
+        "Daikon could not draft a reply. Please read this email yourself.",
+        f"From: {msg.from_addr} (SPF {msg.auth.spf} / DKIM {msg.auth.dkim}"
+        f" / DMARC {msg.auth.dmarc})",
+        f"Subject: {defang(msg.subject)[:120]}",
+        f"Flags: {', '.join(sorted(flags)) or 'none'}",
+        f"Why: {_REASONS.get(reason, reason)}",
+    ]
+    return f"Daikon: couldn't draft a reply for {defang(msg.subject)[:60]}", "\n".join(lines)

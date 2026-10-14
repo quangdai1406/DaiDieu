@@ -1,4 +1,10 @@
-"""Pipeline: poll -> normalize -> draft -> digest -> command -> hold -> send."""
+"""Pipeline: receive -> store -> draft -> digest -> command -> hold -> send.
+
+Reliability rule: every fetched message is written to the graph (status ``received``) before
+any model call, and is only marked done after a draft (or an explicit decision) exists. A
+temporary model failure therefore loses nothing: the stored message is retried on the next
+poll, oldest first, in small batches. Duplicate deliveries are ignored by message id.
+"""
 
 from __future__ import annotations
 
@@ -7,41 +13,45 @@ from daikon.approvals import ApprovalManager, Kind
 from daikon.audit import AuditLog
 from daikon.clock import Clock
 from daikon.commands import VerifiedCommand, authenticate_email, sender_address
-from daikon.digest import build_digest
+from daikon.digest import build_attention, build_digest
 from daikon.drafts import content_hash
 from daikon.filters import Action, RuleFilter
+from daikon.gateway.anthropic_api import GatewayCapError, GatewayError
 from daikon.gateway.base import Gateway
 from daikon.graph.node import Node
 from daikon.graph.store import GraphStore
-from daikon.mail import InboundEmail, Mailbox
+from daikon.mail import AuthResults, InboundEmail, Mailbox
 from daikon.notifier import Notifier
 from daikon.people import PersonBook
 from daikon.policy import DaiIdentity, OutboundPolicy
 from daikon.sender import Sender
 from daikon.senders import analyze_sender
-from daikon.untrusted import Untrusted, normalize_email
-from daikon.worker import Worker
+from daikon.untrusted import Source, Untrusted, normalize_email
+from daikon.worker import DraftFailed, Worker
 
 
 class Pipeline:
     def __init__(self, *, mailbox: Mailbox, store: GraphStore, audit: AuditLog, clock: Clock,
                  gateway: Gateway, approvals: ApprovalManager, policy: OutboundPolicy,
                  identity: DaiIdentity, dai_email: str, people: PersonBook,
-                 rule_filter: RuleFilter, alerter: Alerter | None = None) -> None:
+                 rule_filter: RuleFilter, alerter: Alerter | None = None,
+                 batch_size: int = 5) -> None:
         self._mailbox, self._store, self._audit, self._clock = mailbox, store, audit, clock
         self._approvals, self._identity, self._people = approvals, identity, people
-        self._filter, self._alerter = rule_filter, alerter
+        self._filter, self._alerter, self._batch = rule_filter, alerter, batch_size
         self._worker = Worker(gateway, store, clock, audit)
         self._notifier = Notifier(mailbox, policy, dai_email)
         self._sender = Sender(mailbox, store, approvals, policy, people)
 
+    # ---------- one poll ----------
     def poll(self) -> None:
         for msg in self._mailbox.fetch_new():
             u = normalize_email(text=msg.text, html=msg.html, origin=msg.from_addr)
             if sender_address(msg) in self._identity.emails:
                 self._handle_dai_message(msg, u)
             else:
-                self._ingest(msg, u)
+                self._receive(msg, u)
+        self._process_pending()
 
     def housekeeping(self) -> None:
         for request_id in self._approvals.expire_due():
@@ -53,8 +63,8 @@ class Pipeline:
             if req.hold_until is not None and now >= req.hold_until:
                 self._sender.send(req.id)
 
-    # ---------- inbound mail from other people ----------
-    def _ingest(self, msg: InboundEmail, u: Untrusted) -> None:
+    # ---------- store phase (no model calls) ----------
+    def _receive(self, msg: InboundEmail, u: Untrusted) -> None:
         if self._store.exists("message", f"message-{msg.id}"):
             self._audit.append("pipeline", "pipeline.duplicate", message_id=msg.id)
             return
@@ -73,20 +83,12 @@ class Pipeline:
             return
         self._store.write(Node(
             id=f"message-{msg.id}", type="message", status="received", created=self._clock.now(),
-            body=u.text[:5000],
+            body=u.text,
             extra={"gmail_id": msg.id, "thread_id": msg.thread_id, "from": msg.from_addr,
-                   "subject": msg.subject[:200], "spf": msg.auth.spf,
-                   "dkim": msg.auth.dkim, "dmarc": msg.auth.dmarc,
-                   "flags": sorted(flags)},
+                   "recipient": info.address, "subject": msg.subject[:200], "spf": msg.auth.spf,
+                   "dkim": msg.auth.dkim, "dmarc": msg.auth.dmarc, "flags": sorted(flags)},
         ))
         self._audit.append("pipeline", "pipeline.ingest", message_id=msg.id, flags=sorted(flags))
-        draft = self._worker.draft_reply(msg, u, info.address)
-        req, code = self._approvals.create(
-            Kind.SEND, draft.id, str(draft.extra["content_hash"]), int(draft.extra["version"])
-        )
-        subject, body = build_digest(msg, u, draft, code, flags)
-        self._notifier.send_to_dai(subject, body)
-        self._audit.append("pipeline", "pipeline.digest_sent", request_id=req.id)
 
     def _skip(self, msg: InboundEmail, action: str, reason: str, flags: frozenset[str]) -> None:
         self._store.write(Node(
@@ -97,6 +99,55 @@ class Pipeline:
         if reason == "daily_model_cap" and self._alerter is not None:
             self._alerter.alert(Severity.WARNING, "model_cap",
                                 "Daily model-run cap reached: new mail is not being drafted.")
+
+    # ---------- model phase (oldest first, bounded, restartable) ----------
+    def _process_pending(self) -> None:
+        pending = sorted(self._store.find(type="message", status={"received"}),
+                         key=lambda n: (n.created, n.id))
+        problem: GatewayError | None = None
+        for node in pending[: self._batch]:
+            try:
+                self._draft_and_notify(node)
+            except GatewayCapError as exc:
+                self._mark(node, "skipped", skip_reason=exc.args[0])
+                if self._alerter is not None:
+                    self._alerter.alert(Severity.WARNING, "spend_cap",
+                                        f"Model spending cap reached ({exc.args[0]}).")
+            except GatewayError as exc:  # temporary: leave "received", retry next poll
+                problem = problem or exc
+                break
+        if problem is not None:
+            raise problem
+
+    def _mark(self, node: Node, status: str, **extra: object) -> None:
+        node.status = status
+        node.extra.update(extra)
+        self._store.write(node)
+
+    def _draft_and_notify(self, node: Node) -> None:
+        x = node.extra
+        flags = frozenset(x["flags"])
+        msg = InboundEmail(
+            id=x["gmail_id"], thread_id=x["thread_id"], from_addr=x["from"], to=(),
+            subject=x["subject"], text=node.body, html=None,
+            auth=AuthResults(x["spf"], x["dkim"], x["dmarc"]), received=node.created,
+        )
+        u = Untrusted(text=node.body, source=Source.EMAIL, origin=x["from"], flags=flags,
+                      original_length=len(node.body))
+        try:
+            draft = self._worker.draft_reply(msg.id, msg.subject, u, x["recipient"])
+        except DraftFailed as exc:
+            subject, body = build_attention(msg, flags, exc.reason)
+            self._notifier.send_to_dai(subject, body, kind="alert")
+            self._mark(node, "attention", reason=exc.reason)
+            return
+        req, code = self._approvals.create(
+            Kind.SEND, draft.id, str(draft.extra["content_hash"]), int(draft.extra["version"])
+        )
+        subject, body = build_digest(msg, u, draft, code, flags)
+        self._notifier.send_to_dai(subject, body)
+        self._mark(node, "drafted")
+        self._audit.append("pipeline", "pipeline.digest_sent", request_id=req.id)
 
     # ---------- messages claiming to be from Dai ----------
     def _handle_dai_message(self, msg: InboundEmail, u: Untrusted) -> None:

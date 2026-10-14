@@ -15,6 +15,12 @@ from daikon.audit import AuditLog, verify
 from daikon.clock import FakeClock
 from daikon.config import Limits
 from daikon.filters import RuleFilter
+from daikon.gateway.anthropic_api import (
+    GatewayCapError,
+    GatewayError,
+    ModelRefusalError,
+    TruncatedOutputError,
+)
 from daikon.graph.store import GraphStore
 from daikon.limiter import Limiter, default_rules
 from daikon.mail import AuthResults, InboundEmail
@@ -58,7 +64,8 @@ class Rig:
 
 
 def rig(tmp_path: Path, mode: str = "live", known: set[str] | None = None,
-        reply: dict[str, Any] | None = None, limits: Limits | None = None) -> Rig:
+        reply: dict[str, Any] | None = None, limits: Limits | None = None,
+        script: list[Any] | None = None) -> Rig:
     clock = FakeClock(T0)
     store = GraphStore(tmp_path / "graph")
     audit = AuditLog(tmp_path / "audit", clock)
@@ -74,7 +81,7 @@ def rig(tmp_path: Path, mode: str = "live", known: set[str] | None = None,
     )
     mailbox = FakeMailbox()
     messenger = FakeMessenger()
-    gateway = FakeGateway(reply)
+    gateway = FakeGateway(reply, script)
     pipe = Pipeline(mailbox=mailbox, store=store, audit=audit, clock=clock, gateway=gateway,
                     approvals=approvals, policy=policy, identity=identity, dai_email=DAI,
                     people=people, rule_filter=RuleFilter(limiter, people, audit),
@@ -343,3 +350,78 @@ def test_the_worker_asks_the_model_for_schema_constrained_output(tmp_path: Path)
     r.pipe.poll()
     (schema,) = r.gateway.schemas
     assert schema is not None and "draft_body" in schema["required"]
+
+
+def _statuses(r: Rig) -> dict[str, str]:
+    return {n.id: n.status for n in r.store.find(type="message")}
+
+
+def test_a_temporary_model_failure_loses_nothing_and_retries_on_the_next_poll(tmp_path: Path) -> None:
+    r = rig(tmp_path, script=[GatewayError("server", "overloaded"), None])
+    r.inbound("m1", "bob@example.org", "Hello")
+    with pytest.raises(GatewayError):
+        r.pipe.poll()
+    assert _statuses(r) == {"message-m1": "received"} and r.sent_to(DAI) == []
+    r.pipe.poll()  # no new mail; the stored message is retried
+    assert _statuses(r) == {"message-m1": "drafted"} and len(r.sent_to(DAI)) == 1
+    r.pipe.poll()
+    assert len(r.sent_to(DAI)) == 1 and len(r.gateway.calls) == 2
+
+
+def test_retry_keeps_the_original_warning_flags(tmp_path: Path) -> None:
+    r = rig(tmp_path, script=[GatewayError("timeout", "slow"), None])
+    r.inbound("m1", "bob@example.org", "Hi", html="<p>Hi</p><div style='display:none'>x</div>")
+    with pytest.raises(GatewayError):
+        r.pipe.poll()
+    r.pipe.poll()
+    header = next(m for m in r.mailbox.sent if m.to == [DAI]).body.partition("---- model summary")[0]
+    assert "hidden_text" in header
+
+
+def test_malformed_output_is_retried_once_then_succeeds(tmp_path: Path) -> None:
+    r = rig(tmp_path, script=[{"category": "only one field"}, None])
+    r.inbound("m1", "bob@example.org", "Hello")
+    r.pipe.poll()
+    assert len(r.gateway.calls) == 2 and _statuses(r) == {"message-m1": "drafted"}
+    assert len(r.sent_to(DAI)) == 1
+
+
+@pytest.mark.parametrize("failure", [{"nonsense": 1}, TruncatedOutputError()])
+def test_persistently_bad_output_asks_dai_to_handle_it_manually(tmp_path: Path, failure: Any) -> None:
+    r = rig(tmp_path, script=[failure, failure])
+    r.inbound("m1", "bob@example.org", "Hello")
+    r.pipe.poll()
+    assert len(r.gateway.calls) == 2 and _statuses(r) == {"message-m1": "attention"}
+    (note,) = r.sent_to(DAI)
+    assert "couldn't draft" in note.subject.lower() and "\nOK " not in note.body
+    assert r.store.find(type="approval") == []
+
+
+def test_a_refusal_is_not_retried_and_goes_to_dai(tmp_path: Path) -> None:
+    r = rig(tmp_path, script=[ModelRefusalError()])
+    r.inbound("m1", "bob@example.org", "Hello")
+    r.pipe.poll()
+    assert len(r.gateway.calls) == 1 and _statuses(r) == {"message-m1": "attention"}
+    assert "declined" in r.sent_to(DAI)[0].body.lower()
+
+
+def test_hitting_the_spend_cap_skips_the_message_and_alerts_once(tmp_path: Path) -> None:
+    r = rig(tmp_path, script=[GatewayCapError("monthly_spend_cap")])
+    r.inbound("m1", "bob@example.org", "Hello")
+    r.pipe.poll()
+    assert _statuses(r) == {"message-m1": "skipped"} and r.sent_to(DAI) == []
+    assert [c for c, *_ in r.messenger.sent] == ["email"]
+
+
+def test_all_fetched_mail_is_stored_first_and_processed_in_small_batches(tmp_path: Path) -> None:
+    r = rig(tmp_path, script=[GatewayError("server", "x")])
+    for i in range(7):
+        r.inbound(f"m{i}", f"p{i}@example.org", "Hello")
+    with pytest.raises(GatewayError):
+        r.pipe.poll()
+    assert set(_statuses(r).values()) == {"received"} and len(_statuses(r)) == 7
+    r.pipe.poll()
+    assert sorted(_statuses(r).values()).count("drafted") == 5
+    r.pipe.poll()
+    assert sorted(_statuses(r).values()).count("drafted") == 7
+    assert len(r.sent_to(DAI)) == 7
