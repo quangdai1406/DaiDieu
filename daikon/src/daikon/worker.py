@@ -35,10 +35,18 @@ from daikon.gateway.anthropic_api import (
 from daikon.gateway.base import Gateway
 from daikon.graph.node import Node
 from daikon.graph.store import GraphStore
-from daikon.prompt import DRAFT_SYSTEM, TERMS_SCHEMA, TERMS_SYSTEM, notes_block, wrap_untrusted
+from daikon.prompt import (
+    DRAFT_SYSTEM,
+    REVISE_SUFFIX,
+    TERMS_SCHEMA,
+    TERMS_SYSTEM,
+    notes_block,
+    revision_prompt,
+    wrap_untrusted,
+)
 from daikon.retrieval import Excerpt, RetrievalResult, Retriever, Withheld
 from daikon.style import DEFAULT_STYLE
-from daikon.untrusted import Untrusted
+from daikon.untrusted import Source, Trust, Untrusted, normalize_text
 
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 ATTEMPTS = 2
@@ -75,9 +83,12 @@ class Worker:
         user = wrap_untrusted(u)
         if catalog:
             user = f"{user}\n\n{notes_block(catalog)}"
+        return self._ask_user(user, self._system)
+
+    def _ask_user(self, user: str, system: str) -> dict[str, Any]:
         for _ in range(ATTEMPTS):
             try:
-                raw = self._gateway.complete_json("draft", self._system, user, DRAFT_SCHEMA)
+                raw = self._gateway.complete_json("draft", system, user, DRAFT_SCHEMA)
                 return validate_draft(raw)
             except ModelRefusalError:
                 raise DraftFailed("refusal") from None
@@ -143,3 +154,32 @@ class Worker:
                            category=data["category"], confidence=data["confidence"],
                            notes=len(catalog), withheld=len(withheld))
         return node
+
+    # ---------- revision requested by Dai ----------
+    def redraft(self, draft: Node, original: Node, instruction: str) -> Node:
+        """New version of ``draft`` following Dai's (authenticated) instruction."""
+        u = Untrusted(text=original.body, source=Source.EMAIL, origin=str(original.extra["from"]),
+                      flags=frozenset(original.extra["flags"]), original_length=len(original.body))
+        clean = normalize_text(instruction, source=Source.SMS, origin="dai", trust=Trust.OWNER,
+                               max_chars=500).text
+        try:
+            data = self._ask_user(revision_prompt(u, draft.body, clean),
+                                  self._system + REVISE_SUFFIX)
+        except DraftFailed as exc:
+            self._audit.append("worker", "worker.redraft_failed", draft_id=draft.id,
+                               reason=exc.reason)
+            raise
+        body = _CONTROL.sub("", data["draft_body"]).strip()
+        x = draft.extra
+        version = int(x["version"]) + 1
+        draft.body = body
+        x.update(
+            version=version, edits=int(x.get("edits", 0)) + 1,
+            content_hash=content_hash(x["recipients"], x["subject"], body),
+            summary=data["summary"], confidence=data["confidence"], urgency=data["urgency"],
+            sensitivity_flags=data["sensitivity_flags"],
+            history=[*x.get("history", []), {"version": version - 1, "hash": x["content_hash"]}],
+        )
+        self._store.write(draft)
+        self._audit.append("worker", "worker.redraft", draft_id=draft.id, version=version)
+        return draft

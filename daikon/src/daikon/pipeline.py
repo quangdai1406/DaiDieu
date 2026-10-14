@@ -28,8 +28,10 @@ from daikon.retrieval import Retriever
 from daikon.sender import Sender
 from daikon.senders import analyze_sender
 from daikon.style import DEFAULT_STYLE
-from daikon.untrusted import Source, Untrusted, normalize_email
+from daikon.untrusted import Source, Untrusted, normalize_email, normalize_text
 from daikon.worker import DraftFailed, Worker
+
+MAX_EDITS = 5
 
 
 class Pipeline:
@@ -105,6 +107,16 @@ class Pipeline:
 
     # ---------- model phase (oldest first, bounded, restartable) ----------
     def _process_pending(self) -> None:
+        problem: GatewayError | None = None
+        for run in (self._process_edits, self._process_messages):
+            try:
+                run()
+            except GatewayError as exc:  # temporary: leave work pending, retry next poll
+                problem = problem or exc
+        if problem is not None:
+            raise problem
+
+    def _process_messages(self) -> None:
         pending = sorted(self._store.find(type="message", status={"received"}),
                          key=lambda n: (n.created, n.id))
         problem: GatewayError | None = None
@@ -127,7 +139,8 @@ class Pipeline:
         node.extra.update(extra)
         self._store.write(node)
 
-    def _draft_and_notify(self, node: Node) -> None:
+    @staticmethod
+    def _load_message(node: Node) -> tuple[InboundEmail, Untrusted, frozenset[str]]:
         x = node.extra
         flags = frozenset(x["flags"])
         msg = InboundEmail(
@@ -137,6 +150,62 @@ class Pipeline:
         )
         u = Untrusted(text=node.body, source=Source.EMAIL, origin=x["from"], flags=flags,
                       original_length=len(node.body))
+        return msg, u, flags
+
+    # ---------- revisions asked for by Dai ----------
+    def _process_edits(self) -> None:
+        tasks = [t for t in self._store.find(type="task", status={"pending"})
+                 if t.extra.get("kind") == "edit"]
+        for task in sorted(tasks, key=lambda n: (n.created, n.id))[: self._batch]:
+            try:
+                self._revise(task)
+            except GatewayCapError as exc:
+                self._mark(task, "skipped", skip_reason=exc.args[0])
+                if self._alerter is not None:
+                    self._alerter.alert(Severity.WARNING, "spend_cap",
+                                        f"Model spending cap reached ({exc.args[0]}).")
+
+    def _revise(self, task: Node) -> None:
+        draft = self._store.read("draft", str(task.extra["draft_id"]))
+        original = self._store.read("message", draft.links["replies_to"][0])
+        msg, u, flags = self._load_message(original)
+        instruction = str(task.extra["instruction"])
+        try:
+            new = self._worker.redraft(draft, original, instruction)
+        except DraftFailed as exc:
+            subject, body = build_attention(msg, flags, exc.reason, "revise the draft")
+            self._notifier.send_to_dai(subject, body, kind="alert")
+            self._mark(task, "failed", reason=exc.reason)
+            return
+        version = int(new.extra["version"])
+        _, code = self._approvals.create(Kind.SEND, new.id, str(new.extra["content_hash"]), version)
+        subject, body = build_digest(msg, u, new, code, flags, revision=(version, instruction))
+        self._notifier.send_to_dai(subject, body)
+        self._mark(task, "done")
+
+    def _queue_edit(self, request_id: str, instruction: str) -> None:
+        draft = self._store.read("draft", self._approvals.get(request_id).subject_id)
+        if int(draft.extra.get("edits", 0)) >= MAX_EDITS:
+            self._notifier.send_to_dai(
+                "Daikon: edit limit reached",
+                f"Edit limit reached ({MAX_EDITS} revisions). This draft cannot be edited "
+                "further: reply to the sender yourself, or ignore it.",
+                kind="alert",
+            )
+            return
+        version = int(draft.extra["version"]) + 1
+        clean = normalize_text(instruction, source=Source.SMS, origin="dai", max_chars=500).text
+        self._store.write(Node(
+            id=f"task-edit-{draft.id}-v{version}", type="task", status="pending",
+            created=self._clock.now(),
+            extra={"kind": "edit", "draft_id": draft.id, "instruction": clean,
+                   "from_request": request_id},
+        ))
+        self._audit.append("pipeline", "pipeline.edit_queued", draft_id=draft.id, version=version)
+
+    def _draft_and_notify(self, node: Node) -> None:
+        x = node.extra
+        msg, u, flags = self._load_message(node)
         try:
             draft = self._worker.draft_reply(msg.id, msg.subject, u, x["recipient"])
         except DraftFailed as exc:
@@ -175,7 +244,16 @@ class Pipeline:
         elif cmd.verb == "NO":
             self._approvals.reject(cmd.code, cmd.actor)
         elif cmd.verb == "EDIT":
-            self._approvals.request_edit(cmd.code, cmd.actor)
+            if not cmd.arg:
+                self._notifier.send_to_dai(
+                    "Daikon: EDIT needs instructions",
+                    "Reply like this:  EDIT <code> <what to change>",
+                    kind="alert",
+                )
+                return
+            result = self._approvals.request_edit(cmd.code, cmd.actor)
+            if result.ok and result.request_id:
+                self._queue_edit(result.request_id, cmd.arg)
         elif cmd.verb == "UNDO":
             self._approvals.undo(cmd.code, cmd.actor)
 

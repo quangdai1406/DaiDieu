@@ -33,7 +33,8 @@ def _notes_lines(x: dict[str, object]) -> list[str]:
 
 
 def build_digest(
-    msg: InboundEmail, u: Untrusted, draft: Node, code: str, flags: frozenset[str]
+    msg: InboundEmail, u: Untrusted, draft: Node, code: str, flags: frozenset[str],
+    revision: tuple[int, str] | None = None,
 ) -> tuple[str, str]:
     x = draft.extra
     flag_text = ", ".join(sorted(flags)) or "none"
@@ -44,6 +45,7 @@ def build_digest(
         f" / DMARC {msg.auth.dmarc})",
         f"Subject: {defang(msg.subject)[:120]}",
         f"Flags: {flag_text}",
+        *([f"Revision {revision[0]}: {defang(revision[1])[:200]}"] if revision else []),
         f"Reply goes to: {', '.join(x['recipients'])}",
         *_notes_lines(x),
         "---- model summary (unverified, may be wrong) ----",
@@ -68,14 +70,16 @@ _REASONS = {
 }
 
 
-def build_attention(msg: InboundEmail, flags: frozenset[str], reason: str) -> tuple[str, str]:
+def build_attention(
+    msg: InboundEmail, flags: frozenset[str], reason: str, action: str = "draft a reply"
+) -> tuple[str, str]:
     """Note for an email Daikon could not draft. No codes: there is nothing to approve."""
     lines = [
-        "Daikon could not draft a reply. Please read this email yourself.",
+        f"Daikon could not {action}. Please read this email yourself.",
         f"From: {msg.from_addr} (SPF {msg.auth.spf} / DKIM {msg.auth.dkim}"
         f" / DMARC {msg.auth.dmarc})",
         f"Subject: {defang(msg.subject)[:120]}",
         f"Flags: {', '.join(sorted(flags)) or 'none'}",
         f"Why: {_REASONS.get(reason, reason)}",
     ]
-    return f"Daikon: couldn't draft a reply for {defang(msg.subject)[:60]}", "\n".join(lines)
+    return f"Daikon: couldn't {action} for {defang(msg.subject)[:60]}", "\n".join(lines)
