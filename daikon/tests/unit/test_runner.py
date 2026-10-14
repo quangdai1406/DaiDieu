@@ -171,3 +171,20 @@ def test_second_instance_cannot_start(tmp_path: Path) -> None:
             rig(tmp_path).runner.run_forever(lambda: True, lock=InstanceLock(tmp_path))
     finally:
         first.release()
+
+
+def test_the_daily_hook_runs_each_tick_and_its_failure_never_fails_the_tick(tmp_path: Path) -> None:
+    r = rig(tmp_path)
+    calls: list[int] = []
+
+    def daily() -> None:
+        calls.append(1)
+        raise OSError("disk full token=abc")
+
+    r.runner._daily = daily  # noqa: SLF001 - wired through the constructor in the app
+    assert r.runner.tick() is True and calls == [1]
+    raw = (tmp_path / "audit" / "2026-10.jsonl").read_text(encoding="utf-8")
+    assert "runner.daily_error" in raw and "token=abc" not in raw
+    assert [c for c, *_ in r.messenger.sent] == ["email"]
+    r.runner.tick()
+    assert len(r.messenger.sent) == 1  # alert is de-duplicated

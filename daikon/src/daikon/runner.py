@@ -49,11 +49,13 @@ class Runner:
         max_backoff: timedelta = timedelta(minutes=30),
         alert_after_failures: int = 3,
         sleep: Callable[[float], None] = time.sleep,
+        daily: Callable[[], object] | None = None,
     ) -> None:
         self._pipe, self._store, self._clock = pipeline, store, clock
         self._alerter, self._audit = alerter, audit
         self._interval, self._gap, self._max_backoff = interval, gap_alert_after, max_backoff
         self._alert_after, self._sleep = alert_after_failures, sleep
+        self._daily = daily  # idempotent once-a-day work such as the backup
         self._failures, self._alerted = 0, False
 
     def next_delay(self) -> timedelta:
@@ -102,7 +104,19 @@ class Runner:
             self._alerted = False
         self._failures = 0
         self._beat()
+        self._run_daily()
         return True
+
+    def _run_daily(self) -> None:
+        if self._daily is None:
+            return
+        try:
+            self._daily()
+        except Exception as exc:  # noqa: BLE001 - housekeeping must never stop mail handling
+            self._audit.append("runner", "runner.daily_error", error=type(exc).__name__,
+                               message=redact_secrets(str(exc))[:200])
+            self._alerter.alert(Severity.WARNING, "daily_task_failed",
+                                f"A daily task failed ({type(exc).__name__}).")
 
     def run_forever(self, stop: Callable[[], bool], lock: InstanceLock | None = None) -> None:
         if lock is not None:

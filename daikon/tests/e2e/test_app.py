@@ -136,3 +136,13 @@ def test_doctor_detects_a_tampered_audit_log(tmp_path: Path) -> None:
     secrets.set("gmail_token", "{}")
     report = doctor(config(tmp_path), secrets, clock)
     assert not report.ok and any("audit chain: BROKEN" in ln for ln in report.lines)
+
+
+def test_a_backup_is_made_during_normal_running(tmp_path: Path) -> None:
+    built, mailbox, clock, _ = app(tmp_path)
+    mailbox.inbox.append(mail("m1", "bob@example.org", "Hello", clock))
+    built.runner.tick()
+    backup = tmp_path / "data" / "backups" / "2026-10-14"
+    assert (backup / "graph").is_dir() and (backup / "audit").is_dir()
+    built.runner.tick()  # same day: no second copy, no error
+    assert len(list((tmp_path / "data" / "backups").iterdir())) == 1

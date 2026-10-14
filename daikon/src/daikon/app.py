@@ -16,6 +16,7 @@ from typing import Any
 from daikon.alerter import Alerter
 from daikon.approvals import ApprovalManager
 from daikon.audit import AuditLog, verify
+from daikon.backup import daily_backup
 from daikon.clock import Clock
 from daikon.config import Config
 from daikon.drive.scoped import DriveApi, GoogleDriveApi, ScopedDrive
@@ -105,7 +106,8 @@ def build_app(
         style=load_style(config.style_file), retriever=retriever,
         pause=PauseSwitch(data, clock, audit, limiter),
     )
-    runner = Runner(pipeline, store, clock, alerter, audit, sleep=sleep)
+    runner = Runner(pipeline, store, clock, alerter, audit, sleep=sleep,
+                    daily=lambda: daily_backup(data, clock.now()))
     return App(runner, pipeline, people, InstanceLock(data), config)
 
 
