@@ -92,7 +92,7 @@ def rig(tmp_path: Path, mode: str = "live", known: set[str] | None = None,
                     alerter=Alerter(messenger, limiter, audit),
                     retriever=(Retriever(ScopedDrive(drive, "root", clock, audit), identity.emails)
                                if drive is not None else None),
-                    pause=PauseSwitch(tmp_path, clock, audit, limiter))
+                    pause=PauseSwitch(tmp_path, clock, audit, limiter), limiter=limiter)
     return Rig(pipe, mailbox, gateway, clock, approvals, store, tmp_path, people, limiter,
                messenger)
 

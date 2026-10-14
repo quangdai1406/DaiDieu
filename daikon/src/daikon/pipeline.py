@@ -23,6 +23,7 @@ from daikon.gateway.base import Gateway
 from daikon.graph.node import Node
 from daikon.graph.store import GraphStore
 from daikon.identity import DaiIdentity
+from daikon.limiter import Limiter
 from daikon.mail import AuthResults, InboundEmail, Mailbox
 from daikon.notifier import Notifier
 from daikon.pause import PauseSwitch
@@ -46,11 +47,11 @@ class Pipeline:
                  rule_filter: RuleFilter, alerter: Alerter | None = None,
                  batch_size: int = 5, style: str = DEFAULT_STYLE,
                  retriever: Retriever | None = None,
-                 pause: PauseSwitch | None = None) -> None:
+                 pause: PauseSwitch | None = None, limiter: Limiter | None = None) -> None:
         self._mailbox, self._store, self._audit, self._clock = mailbox, store, audit, clock
         self._approvals, self._identity, self._people = approvals, identity, people
         self._filter, self._alerter, self._batch = rule_filter, alerter, batch_size
-        self._pause = pause
+        self._pause, self._limiter = pause, limiter
         self._worker = Worker(gateway, store, clock, audit, style, retriever)
         self._notifier = Notifier(mailbox, policy, dai_email)
         self._sender = Sender(mailbox, store, approvals, policy, people)
@@ -281,8 +282,18 @@ class Pipeline:
 
     def _apply(self, cmd: VerifiedCommand) -> None:
         if cmd.verb == "OK":
+            if self._limiter is not None and not self._limiter.peek("approvals").allowed:
+                self._notifier.send_to_dai(
+                    "Daikon: daily approval limit reached",
+                    "You reached today's approval limit, so nothing more was approved. "
+                    "Your drafts are kept; try again after midnight UTC.",
+                    kind="alert",
+                )
+                return
             result = self._approvals.approve(cmd.code, self._current_hash, actor=cmd.actor)
             if result.ok:
+                if self._limiter is not None:
+                    self._limiter.check_and_consume("approvals")
                 hold = int(self._hold_seconds())
                 self._notifier.send_to_dai(
                     f"Reply approved: sending in {hold}s",
