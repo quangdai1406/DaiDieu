@@ -58,6 +58,7 @@ class ApprovalRequest:
     state: str
     expires_at: datetime
     hold_until: datetime | None
+    sending_since: datetime | None = None
 
 
 def _hash(salt: str, code: str) -> str:
@@ -106,6 +107,7 @@ class ApprovalManager:
         return ApprovalRequest(
             n.id, Kind(x["kind"]), x["subject_id"], x["subject_hash"], int(x["version"]),
             n.status, datetime.fromisoformat(x["expires_at"]), _dt(x.get("hold_until")),
+            _dt(x.get("sending_since")),
         )
 
     # ---------- creation ----------
@@ -260,7 +262,8 @@ class ApprovalManager:
         hold_until = _dt(node.extra.get("hold_until"))
         if hold_until is None or self._clock.now() < hold_until:
             return self._deny("hold_not_elapsed", "sender", request_id)
-        self._set(node, "sending", "approval.begin_send")
+        self._set(node, "sending", "approval.begin_send",
+                  sending_since=self._clock.now().isoformat())
         return Decision(True, "ok", request_id)
 
     def _finish(self, request_id: str, state: str, action: str, **extra: Any) -> Decision:

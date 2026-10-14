@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import base64
 import re
+from datetime import datetime
 from email.message import EmailMessage
-from email.utils import parseaddr
+from email.utils import getaddresses, parseaddr
 from typing import Any
 
 from googleapiclient.errors import HttpError
@@ -21,7 +22,7 @@ from daikon.clock import Clock
 from daikon.gmail.parse import parse_message
 from daikon.graph.node import Node
 from daikon.graph.store import GraphStore
-from daikon.mail import InboundEmail
+from daikon.mail import InboundEmail, PermanentSendError
 
 STATE_TYPE, STATE_ID = "state", "gmail-history"
 _RECIPIENT = re.compile(r"^[^@\s<>,;\"']+@[^@\s<>,;\"']+\.[^@\s<>,;\"']+$")
@@ -127,5 +128,31 @@ class GmailMailbox:
                 msg["References"] = f"{headers.get('references', '')} {message_id}".strip()
             payload["threadId"] = orig.get("threadId", in_reply_to)
         payload["raw"] = base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii")
-        result = self._svc.users().messages().send(userId="me", body=payload).execute()
+        try:
+            result = self._svc.users().messages().send(userId="me", body=payload).execute()
+        except HttpError as exc:
+            # 4xx (except timeout/rate limit) is a definite rejection; anything else is ambiguous
+            if 400 <= _status(exc) < 500 and _status(exc) not in (408, 429):
+                code = _status(exc)
+                raise PermanentSendError(f"mail service rejected the message ({code})") from exc
+            raise
         return str(result["id"])
+
+    def find_sent(self, to: list[str], subject: str, since: datetime) -> str | None:
+        for recipient in to:
+            if not _RECIPIENT.match(recipient):
+                raise ValueError(f"invalid recipient: {recipient!r}")
+        clean = re.sub(r'["\\\r\n]+', " ", subject)[:100].strip()
+        terms = " ".join(f"to:{r}" for r in to)
+        query = f'in:sent {terms} subject:"{clean}" after:{int(since.timestamp())}'
+        listing = self._svc.users().messages().list(userId="me", q=query).execute()
+        wanted = {r.lower() for r in to}
+        for item in listing.get("messages", []):
+            meta = self._svc.users().messages().get(
+                userId="me", id=item["id"], format="metadata", metadataHeaders=["To", "Subject"]
+            ).execute()
+            headers = {h["name"].lower(): h["value"] for h in meta["payload"]["headers"]}
+            got = {a.lower() for _, a in getaddresses([headers.get("to", "")]) if a}
+            if headers.get("subject", "").strip() == subject.strip() and got == wanted:
+                return str(item["id"])
+        return None

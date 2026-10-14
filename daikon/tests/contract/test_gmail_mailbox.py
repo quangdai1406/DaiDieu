@@ -147,3 +147,40 @@ def test_bad_recipients_are_refused(tmp_path: Path, bad: str) -> None:
     with pytest.raises(ValueError, match="recipient"):
         box.send([bad], "s", "b")
     assert g.sent == []
+
+
+def test_find_sent_matches_recipient_and_subject_in_the_sent_folder(tmp_path: Path) -> None:
+    box, g, _ = setup(tmp_path)
+    g.sent_listed = ["s1", "s2"]
+    g.resources["s1"] = multipart_message("s1", subject="Re: Other")
+    g.resources["s1"]["payload"]["headers"] += [{"name": "To", "value": "bob@example.org"}]
+    g.resources["s2"] = multipart_message("s2", subject="Re: Lunch?")
+    g.resources["s2"]["payload"]["headers"] += [{"name": "To", "value": "Bob <bob@example.org>"}]
+    since = datetime(2026, 10, 14, tzinfo=UTC)
+    assert box.find_sent(["bob@example.org"], "Re: Lunch?", since) == "s2"
+    assert box.find_sent(["carol@example.org"], "Re: Lunch?", since) is None
+    assert box.find_sent(["bob@example.org"], "Re: Nothing", since) is None
+
+
+def test_find_sent_query_is_built_from_validated_parts(tmp_path: Path) -> None:
+    box, g, _ = setup(tmp_path)
+    box.find_sent(["bob@example.org"], 'Re: "quoted" \\ subject\nnewline', datetime(2026, 10, 14, tzinfo=UTC))
+    q = g.last_list_q
+    assert "in:sent" in q and "to:bob@example.org" in q and "after:" in q
+    assert "\n" not in q and '""' not in q
+    with pytest.raises(ValueError, match="recipient"):
+        box.find_sent(["bad address"], "s", datetime(2026, 10, 14, tzinfo=UTC))
+
+
+def test_a_client_error_on_send_is_a_permanent_failure_but_a_server_error_is_not(tmp_path: Path) -> None:
+    from daikon.mail import PermanentSendError
+    from tests.contract.fake_gmail import http_error
+
+    box, g, _ = setup(tmp_path)
+    g.send_error = http_error(400)
+    with pytest.raises(PermanentSendError):
+        box.send(["bob@example.org"], "s", "b")
+    g.send_error = http_error(503)
+    with pytest.raises(Exception) as info:  # noqa: PT011 - any non-permanent error is acceptable
+        box.send(["bob@example.org"], "s", "b")
+    assert not isinstance(info.value, PermanentSendError)

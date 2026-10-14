@@ -30,6 +30,9 @@ class FakeGmail:
         self.get_errors: dict[str, int] = {}
         self.listed_ids: list[str] = []
         self.sent: list[dict[str, Any]] = []
+        self.sent_listed: list[str] = []
+        self.last_list_q = ""
+        self.send_error: Exception | None = None
         self.calls: list[str] = []
 
     # users().xxx chain
@@ -80,7 +83,9 @@ class _Messages:
     def list(self, userId: str, q: str = "", pageToken: str | None = None,  # noqa: N803
              maxResults: int | None = None) -> _Req:  # noqa: N803
         self.g.calls.append("messages.list")
-        ids = self.g.listed_ids[:maxResults] if maxResults else self.g.listed_ids
+        self.g.last_list_q = q
+        source = self.g.sent_listed if "in:sent" in q else self.g.listed_ids
+        ids = source[:maxResults] if maxResults else source
         return _Req(lambda: {"messages": [{"id": i, "threadId": i} for i in ids]})
 
     def get(self, userId: str, id: str, format: str = "full",  # noqa: A002, N803
@@ -98,6 +103,8 @@ class _Messages:
         self.g.calls.append("messages.send")
 
         def run() -> dict[str, Any]:
+            if self.g.send_error is not None:
+                raise self.g.send_error
             self.g.sent.append(body)
             return {"id": f"sent{len(self.g.sent)}", "threadId": body.get("threadId", "newthread")}
 

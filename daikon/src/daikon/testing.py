@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, ClassVar
 
 from daikon.mail import InboundEmail
@@ -21,6 +22,8 @@ class SentMail:
 class FakeMailbox:
     inbox: list[InboundEmail] = field(default_factory=list)
     sent: list[SentMail] = field(default_factory=list)
+    fail_with: Exception | None = None
+    record_before_fail: bool = False  # the mail went out but the response was lost
 
     def fetch_new(self) -> list[InboundEmail]:
         out, self.inbox = list(self.inbox), []
@@ -29,8 +32,18 @@ class FakeMailbox:
     def send(
         self, to: list[str], subject: str, body: str, in_reply_to: str | None = None
     ) -> str:
+        if self.fail_with is not None:
+            if self.record_before_fail:
+                self.sent.append(SentMail(list(to), subject, body, in_reply_to))
+            raise self.fail_with
         self.sent.append(SentMail(list(to), subject, body, in_reply_to))
         return f"sent-{len(self.sent)}"
+
+    def find_sent(self, to: list[str], subject: str, since: datetime) -> str | None:
+        for i, m in enumerate(self.sent, start=1):
+            if m.to == list(to) and m.subject == subject:
+                return f"sent-{i}"
+        return None
 
 
 class FakeGateway:

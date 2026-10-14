@@ -35,8 +35,16 @@ class InboundEmail:
     attachment_count: int = 0
 
 
+class PermanentSendError(Exception):
+    """The mail service definitely rejected the message: not sent, retrying is pointless."""
+
+
 class Mailbox(Protocol):
     def fetch_new(self) -> list[InboundEmail]: ...
+
+    def find_sent(self, to: list[str], subject: str, since: datetime) -> str | None:
+        """Id of a message in the Sent folder matching recipients and subject since ``since``."""
+        ...
 
     def send(
         self, to: list[str], subject: str, body: str, in_reply_to: str | None = None

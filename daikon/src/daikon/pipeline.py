@@ -27,7 +27,7 @@ from daikon.pause import PauseSwitch
 from daikon.people import PersonBook
 from daikon.policy import OutboundPolicy
 from daikon.retrieval import Retriever
-from daikon.sender import Sender
+from daikon.sender import CHECK_AFTER, Sender
 from daikon.senders import analyze_sender
 from daikon.style import DEFAULT_STYLE
 from daikon.untrusted import Source, Untrusted, normalize_email, normalize_text
@@ -65,6 +65,25 @@ class Pipeline:
     def housekeeping(self) -> None:
         for request_id in self._approvals.expire_due():
             self._audit.append("pipeline", "pipeline.expired", request_id=request_id)
+        self._recover_sending()
+
+    def _recover_sending(self) -> None:
+        now = self._clock.now()
+        for req in self._approvals.sending_requests():
+            if req.sending_since is None or now - req.sending_since < CHECK_AFTER:
+                continue
+            outcome = self._sender.recover(req.id, now)
+            self._audit.append("pipeline", "pipeline.send_recovery", request_id=req.id,
+                               outcome=outcome)
+            if outcome == "failed":
+                draft = self._store.read("draft", req.subject_id)
+                self._notifier.send_to_dai(
+                    "Daikon: couldn't confirm a reply was sent",
+                    f"I could not confirm that the reply to {', '.join(draft.extra['recipients'])} "
+                    f"({draft.extra['subject']}) was sent, and it is not in the Sent folder. "
+                    "Nothing was resent. Please check Gmail and reply yourself if needed.",
+                    kind="alert",
+                )
 
     def release_due(self) -> None:
         if self._pause is not None and self._pause.is_paused():
