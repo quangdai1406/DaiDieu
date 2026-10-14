@@ -58,6 +58,9 @@ For each phase: a short summary, then the deliverable (questions, options table,
 - **Phone:** Twilio number (SMS; needs A2P 10DLC registration for US).
 - **Autonomy:** draft-only. Dai sends/approves everything outward-facing.
 - **v1 second-brain use:** reply context for email drafts.
+- **Dai's inbox:** a Gmail filter auto-forwards chosen mail to Daikon's Gmail. Daikon has no access to Dai's account.
+- **Command allowlist:** only Dai's own verified phone number and personal email address may command Daikon. All other inbound content is untrusted data to triage, never instructions.
+- **Budget:** Claude Pro (no API spend) plus Twilio (~$1-3/month).
 
 ## Open questions to resolve first
-Ask one at a time: how Daikon gets access to Dai's own inbox, Twilio/usage budget, and which senders form the initial allowlist.
+None blocking. Brainstorm complete; next phase is the design doc in `docs/`.
