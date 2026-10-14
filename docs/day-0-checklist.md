@@ -11,8 +11,8 @@ Nothing here puts secrets in the repo. Secrets go into Windows Credential Manage
 
 ### A1. Twilio account and number, then start the A2P registration
 **Why:** US texting needs "A2P 10DLC" registration. It can take days, so start it first.
-1. Create the Twilio account. Turn on **2FA** for your login.
-2. Buy one US number (SMS-capable). This is Daikon's number.
+1. Create the Twilio account. Turn on **2FA** for your login. On the sign-up questions choose **Messaging** and **Voice** (voice is for phase 2 calls) and **With code**. These answers only tailor the console; they are not a commitment. Leave Email, Verification, Customer data and Conversational AI unticked (Daikon uses Gmail and his own AI). Upgrade the trial account to a paid one (small prepaid balance): trial accounts can only reach verified numbers and add a trial prefix to messages.
+2. Buy one US number with **both SMS and Voice** capability. This is Daikon's number.
 3. In the Twilio console, turn on **number lock** (so it cannot be ported out).
 4. Create a **scoped API key** (Console > Account > API keys), not the master auth token.
    Write down the Account SID, the Key SID and the Key Secret. The secret is shown once.
@@ -35,6 +35,9 @@ shows "pending". SMS support is switched on only after it shows "approved".
 1. In the Anthropic Console create a key named `daikon` used only by Daikon.
 2. Set a **monthly spend limit** of about **$15**.
 **Done when:** the key is saved in your password manager and the limit is visible in the console.
+
+### A4. Share the Handovers folder with Daikon (create-only access, accepted 2026-10-14)
+Not needed for v1 email. Do this before the phone-call milestone (C4): in Drive, share the existing **Handovers** folder (id `11FPz6dYllie6zSH175ponTbiCHzBE2K2`) with Daikon's Gmail address as **Editor**, and nothing else outside the Second Brain. Daikon's code can only create new files there.
 
 ## Block B: Google setup (about 45 minutes)
 

@@ -249,7 +249,7 @@ Every field carries `scope: service` or `scope: person`.
 - Facts quoted from the callee (prices, hours) are stored with a date and "as said on the call". Daikon shows the age ("said 3 months ago, confirm?").
 - Stored call text is **untrusted data**: structured fields with length caps, wrapped as untrusted when read back, never instructions.
 
-### 10.4 Handover delivery (decided by Dai, 2026-10-14)
+### 10.4 Handover delivery (decided by Dai, 2026-10-14; create-only write access accepted by Dai the same day)
 
 Call reports go to the **existing Handovers folder** (Drive id `11FPz6dYllie6zSH175ponTbiCHzBE2K2`), in the same format the other tasks use, so Dai's Saturday task files them into `10 Daikon Calls` and the GraphRAG index (`docs/saturday-task.md`, STEP 2F). The folder is outside the Second Brain wiki, so Daikon's read-only rule for the Second Brain still holds. It does need a **new, narrow write permission**:
 
