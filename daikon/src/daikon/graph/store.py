@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import os
 from collections.abc import Collection
 from pathlib import Path
@@ -36,6 +37,8 @@ class InstanceLock:
 class GraphStore:
     def __init__(self, root: Path) -> None:
         self.root = root
+        # path -> (mtime_ns, size, node); copies are handed out so callers cannot corrupt it
+        self._cache: dict[Path, tuple[int, int, Node]] = {}
 
     def _path(self, type_: str, id_: str) -> Path:
         return self.root / validate_name(type_) / f"{validate_name(id_)}.md"
@@ -50,13 +53,25 @@ class GraphStore:
                 fh.flush()
                 os.fsync(fh.fileno())
             os.replace(tmp, path)
+            self._remember(path, node)
         except BaseException:
             with contextlib.suppress(OSError):
                 tmp.unlink()
             raise
 
+    def _remember(self, path: Path, node: Node) -> None:
+        st = path.stat()
+        self._cache[path] = (st.st_mtime_ns, st.st_size, copy.deepcopy(node))
+
     def read(self, type_: str, id_: str) -> Node:
-        return from_markdown(self._path(type_, id_).read_text(encoding="utf-8"))
+        path = self._path(type_, id_)
+        st = path.stat()
+        hit = self._cache.get(path)
+        if hit and hit[0] == st.st_mtime_ns and hit[1] == st.st_size:
+            return copy.deepcopy(hit[2])
+        node = from_markdown(path.read_text(encoding="utf-8"))
+        self._cache[path] = (st.st_mtime_ns, st.st_size, copy.deepcopy(node))
+        return node
 
     def exists(self, type_: str, id_: str) -> bool:
         return self._path(type_, id_).is_file()

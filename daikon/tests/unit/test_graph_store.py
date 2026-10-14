@@ -130,3 +130,35 @@ def test_find_by_type_status_and_link(tmp_path: Path) -> None:
     assert [n.id for n in got] == ["task-1"]
     assert [n.id for n in store.find(links_to="person-1")] == ["task-1", "task-2"]
     assert [n.id for n in store.find(type="person")] == ["person-1"]
+
+
+def test_read_returns_independent_copies(tmp_path: Path) -> None:
+    store = GraphStore(tmp_path)
+    store.write(make(extra={"k": "v"}))
+    first = store.read("task", "task-1")
+    first.extra["k"] = "mutated"
+    first.tags.append("x")
+    assert store.read("task", "task-1").extra == {"k": "v"}
+    assert store.read("task", "task-1").tags == []
+
+
+def test_unchanged_files_are_not_reparsed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import daikon.graph.store as mod
+
+    store = GraphStore(tmp_path)
+    store.write(make())
+    calls: list[int] = []
+    real = mod.from_markdown
+    monkeypatch.setattr(mod, "from_markdown", lambda t: calls.append(1) or real(t))
+    for _ in range(3):
+        store.read("task", "task-1")
+    assert len(calls) <= 1
+
+
+def test_external_edit_is_seen_despite_cache(tmp_path: Path) -> None:
+    store = GraphStore(tmp_path)
+    store.write(make(body="old"))
+    store.read("task", "task-1")
+    path = tmp_path / "task" / "task-1.md"
+    path.write_text(path.read_text(encoding="utf-8").replace("old", "a much longer new body"))
+    assert store.read("task", "task-1").body == "a much longer new body"
