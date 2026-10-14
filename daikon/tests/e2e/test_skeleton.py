@@ -9,17 +9,19 @@ from typing import Any
 
 import pytest
 
+from daikon.alerter import Alerter
 from daikon.approvals import ApprovalManager
 from daikon.audit import AuditLog, verify
 from daikon.clock import FakeClock
 from daikon.config import Limits
+from daikon.filters import RuleFilter
 from daikon.graph.store import GraphStore
 from daikon.limiter import Limiter, default_rules
 from daikon.mail import AuthResults, InboundEmail
 from daikon.people import PersonBook
 from daikon.pipeline import Pipeline
 from daikon.policy import DaiIdentity, OutboundPolicy
-from daikon.testing import FakeGateway, FakeMailbox
+from daikon.testing import FakeGateway, FakeMailbox, FakeMessenger
 
 pytestmark = [pytest.mark.unit, pytest.mark.security]
 T0 = datetime(2026, 10, 14, 9, 0, tzinfo=UTC)
@@ -37,6 +39,8 @@ class Rig:
     store: GraphStore
     root: Path
     people: PersonBook
+    limiter: Limiter
+    messenger: FakeMessenger
 
     def inbound(self, id_: str, frm: str, text: str, auth: AuthResults = PASS, subject: str = "Hi",
                 html: str | None = None, reply_to: str | None = None) -> None:
@@ -54,13 +58,13 @@ class Rig:
 
 
 def rig(tmp_path: Path, mode: str = "live", known: set[str] | None = None,
-        reply: dict[str, Any] | None = None) -> Rig:
+        reply: dict[str, Any] | None = None, limits: Limits | None = None) -> Rig:
     clock = FakeClock(T0)
     store = GraphStore(tmp_path / "graph")
     audit = AuditLog(tmp_path / "audit", clock)
     approvals = ApprovalManager(store, audit, clock)
     identity = DaiIdentity(frozenset({DAI}), frozenset({"+15550001111"}))
-    limiter = Limiter(tmp_path / "limits.json", clock, default_rules(Limits()))
+    limiter = Limiter(tmp_path / "limits.json", clock, default_rules(limits or Limits()))
     people = PersonBook(store, clock)
     for address in known if known is not None else {"bob@example.org"}:
         people.mark_contacted(address)
@@ -69,11 +73,14 @@ def rig(tmp_path: Path, mode: str = "live", known: set[str] | None = None,
         audit=audit, known_recipient=people.is_known,
     )
     mailbox = FakeMailbox()
+    messenger = FakeMessenger()
     gateway = FakeGateway(reply)
     pipe = Pipeline(mailbox=mailbox, store=store, audit=audit, clock=clock, gateway=gateway,
                     approvals=approvals, policy=policy, identity=identity, dai_email=DAI,
-                    people=people)
-    return Rig(pipe, mailbox, gateway, clock, approvals, store, tmp_path, people)
+                    people=people, rule_filter=RuleFilter(limiter, people, audit),
+                    alerter=Alerter(messenger, limiter, audit))
+    return Rig(pipe, mailbox, gateway, clock, approvals, store, tmp_path, people, limiter,
+               messenger)
 
 
 def test_happy_path_inbound_to_approved_reply(tmp_path: Path) -> None:
@@ -286,3 +293,37 @@ def test_successful_send_marks_the_recipient_known(tmp_path: Path) -> None:
     r.clock.advance(timedelta(seconds=61))
     r.pipe.release_due()
     assert len(r.sent_to("carol@example.net")) == 1
+
+
+def test_automated_mail_costs_no_model_run_and_gets_no_digest(tmp_path: Path) -> None:
+    r = rig(tmp_path)
+    r.inbound("m1", "no-reply@shop.example", "Your order shipped")
+    r.pipe.poll()
+    assert r.gateway.calls == [] and r.sent_to(DAI) == []
+    assert r.store.read("message", "message-m1").status == "skipped"
+
+
+def test_a_flood_from_one_sender_is_capped(tmp_path: Path) -> None:
+    r = rig(tmp_path, limits=Limits(per_sender_per_hour=3))
+    for i in range(6):
+        r.inbound(f"f{i}", "bob@example.org", f"msg {i}")
+    r.pipe.poll()
+    assert len(r.sent_to(DAI)) == 3 and len(r.gateway.calls) == 3
+
+
+def test_blocked_sender_is_dropped_silently(tmp_path: Path) -> None:
+    r = rig(tmp_path)
+    r.people.block("spam@example.net")
+    r.inbound("m1", "spam@example.net", "Buy now")
+    r.pipe.poll()
+    assert r.gateway.calls == [] and r.sent_to(DAI) == []
+
+
+def test_hitting_the_daily_model_cap_alerts_dai_once(tmp_path: Path) -> None:
+    r = rig(tmp_path, limits=Limits(model_runs_per_day=1))
+    r.limiter.check_and_consume("model_runs")
+    r.inbound("m1", "bob@example.org", "one")
+    r.inbound("m2", "carol@example.net", "two")
+    r.pipe.poll()
+    assert r.gateway.calls == [] and r.sent_to(DAI) == []
+    assert [c for c, *_ in r.messenger.sent] == ["email"]  # warning -> email, de-duplicated

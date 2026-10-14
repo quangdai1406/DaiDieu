@@ -31,6 +31,7 @@ class InboundEmail:
     auth: AuthResults
     received: datetime
     reply_to: str | None = None
+    headers: tuple[tuple[str, str], ...] = ()
 
 
 class Mailbox(Protocol):

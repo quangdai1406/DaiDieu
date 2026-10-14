@@ -46,3 +46,12 @@ def test_state_persists_across_instances(tmp_path: Path) -> None:
     b = book(tmp_path)
     b.mark_contacted("bob@example.com")
     assert book(tmp_path).is_known("bob@example.com")
+
+
+def test_blocked_people_are_reported(tmp_path: Path) -> None:
+    b = book(tmp_path)
+    assert not b.is_blocked("x@y.org")
+    b.block("X@Y.org")
+    assert b.is_blocked("x@y.org") and not b.is_known("x@y.org")
+    b.mark_contacted("x@y.org")  # contacting never unblocks
+    assert b.is_blocked("x@y.org")

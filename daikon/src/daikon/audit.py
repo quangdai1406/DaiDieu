@@ -79,7 +79,7 @@ class AuditLog:
     def head(self) -> str:
         return self._head
 
-    def append(self, actor: str, action: str, **data: Any) -> AuditEntry:
+    def append(self, actor: str, action: str, /, **data: Any) -> AuditEntry:
         with self._lock:
             now = self._clock.now()
             body = {

@@ -46,6 +46,7 @@ def default_rules(limits: Limits) -> dict[str, Rule]:
         "sender_hourly": Rule(limits.per_sender_per_hour, "hour"),
         "alerts": Rule(limits.alerts_per_day, "day"),
         "alert_key": Rule(1, "hour"),
+        "inbound_hourly": Rule(limits.per_sender_per_hour, "hour"),
     }
 
 

@@ -51,3 +51,20 @@ class FakeGateway:
     def complete_json(self, role: str, system: str, user: str) -> dict[str, Any]:
         self.calls.append((system, user))
         return dict(self.reply)
+
+
+@dataclass
+class FakeMessenger:
+    """Alerter messenger that records what it was asked to send."""
+
+    sms_ok: bool = True
+    email_ok: bool = True
+    sent: list[tuple[str, str, str]] = field(default_factory=list)  # (channel, subject, body)
+
+    def send_sms(self, body: str) -> bool:
+        self.sent.append(("sms", "", body))
+        return self.sms_ok
+
+    def send_email(self, subject: str, body: str) -> bool:
+        self.sent.append(("email", subject, body))
+        return self.email_ok

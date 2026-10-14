@@ -41,14 +41,27 @@ class PersonBook:
 
     def is_known(self, address: str) -> bool:
         pid = self._id(address.strip().lower())
-        return self._store.exists("person", pid) and bool(
-            self._store.read("person", pid).extra.get("sent_before")
-        )
+        if not self._store.exists("person", pid):
+            return False
+        node = self._store.read("person", pid)
+        return bool(node.extra.get("sent_before")) and node.status != "blocked"
+
+    def is_blocked(self, address: str) -> bool:
+        pid = self._id(address.strip().lower())
+        if not self._store.exists("person", pid):
+            return False
+        return self._store.read("person", pid).status == "blocked"
+
+    def block(self, address: str) -> None:
+        node = self.ensure(address)
+        node.status = "blocked"
+        self._store.write(node)
 
     def mark_contacted(self, address: str) -> None:
         node = self.ensure(address)
         node.extra["sent_before"] = True
-        node.status = "known"
+        if node.status != "blocked":  # contacting someone never unblocks them
+            node.status = "known"
         self._store.write(node)
 
     def known_addresses(self) -> set[str]:

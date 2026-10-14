@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from daikon.alerter import Alerter, Severity
 from daikon.approvals import ApprovalManager, Kind
 from daikon.audit import AuditLog
 from daikon.clock import Clock
 from daikon.commands import VerifiedCommand, authenticate_email, sender_address
 from daikon.digest import build_digest
 from daikon.drafts import content_hash
+from daikon.filters import Action, RuleFilter
 from daikon.gateway.base import Gateway
 from daikon.graph.node import Node
 from daikon.graph.store import GraphStore
@@ -24,9 +26,11 @@ from daikon.worker import Worker
 class Pipeline:
     def __init__(self, *, mailbox: Mailbox, store: GraphStore, audit: AuditLog, clock: Clock,
                  gateway: Gateway, approvals: ApprovalManager, policy: OutboundPolicy,
-                 identity: DaiIdentity, dai_email: str, people: PersonBook) -> None:
+                 identity: DaiIdentity, dai_email: str, people: PersonBook,
+                 rule_filter: RuleFilter, alerter: Alerter | None = None) -> None:
         self._mailbox, self._store, self._audit, self._clock = mailbox, store, audit, clock
         self._approvals, self._identity, self._people = approvals, identity, people
+        self._filter, self._alerter = rule_filter, alerter
         self._worker = Worker(gateway, store, clock, audit)
         self._notifier = Notifier(mailbox, policy, dai_email)
         self._sender = Sender(mailbox, store, approvals, policy, people)
@@ -57,6 +61,10 @@ class Pipeline:
             self._audit.append("pipeline", "pipeline.bad_from", message_id=msg.id)
             return
         self._people.ensure(info.address, info.display_name)
+        verdict = self._filter.evaluate(msg, info.address)
+        if verdict.action is not Action.PROCESS:
+            self._skip(msg, verdict.action.value, verdict.reason, flags)
+            return
         self._store.write(Node(
             id=f"message-{msg.id}", type="message", status="received", created=self._clock.now(),
             body=u.text[:5000],
@@ -73,6 +81,16 @@ class Pipeline:
         subject, body = build_digest(msg, u, draft, code, flags)
         self._notifier.send_to_dai(subject, body)
         self._audit.append("pipeline", "pipeline.digest_sent", request_id=req.id)
+
+    def _skip(self, msg: InboundEmail, action: str, reason: str, flags: frozenset[str]) -> None:
+        self._store.write(Node(
+            id=f"message-{msg.id}", type="message", status="skipped", created=self._clock.now(),
+            extra={"gmail_id": msg.id, "from": msg.from_addr, "subject": msg.subject[:200],
+                   "skip_action": action, "skip_reason": reason, "flags": sorted(flags)},
+        ))
+        if reason == "daily_model_cap" and self._alerter is not None:
+            self._alerter.alert(Severity.WARNING, "model_cap",
+                                "Daily model-run cap reached: new mail is not being drafted.")
 
     # ---------- messages claiming to be from Dai ----------
     def _handle_dai_message(self, msg: InboundEmail, u: Untrusted) -> None:

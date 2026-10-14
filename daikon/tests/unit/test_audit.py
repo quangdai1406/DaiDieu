@@ -111,3 +111,10 @@ def test_head_returns_last_hash(tmp_path: Path) -> None:
     assert log.head() == GENESIS
     e = log.append("runner", "a")
     assert log.head() == e.hash
+
+
+def test_data_fields_may_be_named_actor_or_action(tmp_path: Path) -> None:
+    log, _ = log_in(tmp_path)
+    e = log.append("filter", "filter.decision", action="skip", actor="bob")
+    assert e.actor == "filter" and e.action == "filter.decision"
+    assert e.data == {"action": "skip", "actor": "bob"}
