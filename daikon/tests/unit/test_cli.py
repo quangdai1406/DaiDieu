@@ -42,3 +42,31 @@ def test_parser_has_auth_and_smoke_commands() -> None:
 def test_unknown_command_exits_with_error() -> None:
     with pytest.raises(SystemExit):
         build_parser().parse_args(["wipe-everything"])
+
+
+def test_parser_has_run_doctor_and_set_secret() -> None:
+    p = build_parser()
+    r = p.parse_args(["run", "--config", "c.yaml", "--once"])
+    assert r.command == "run" and r.config == "c.yaml" and r.once is True
+    assert p.parse_args(["run"]).once is False
+    d = p.parse_args(["doctor", "--config", "c.yaml"])
+    assert d.command == "doctor" and d.config == "c.yaml"
+    s = p.parse_args(["set-secret", "anthropic_api_key", "--expires-in-days", "90"])
+    assert s.name == "anthropic_api_key" and s.expires_in_days == 90
+
+
+def test_set_secret_stores_only_known_names_and_records_expiry() -> None:
+    from datetime import timedelta
+
+    from daikon.cli import set_secret
+    from daikon.secretstore import MemorySecretStore
+
+    store = MemorySecretStore()
+    now = datetime(2026, 10, 14, tzinfo=UTC)
+    set_secret(store, "anthropic_api_key", "sk-ant-test-" + "x" * 20, now, expires_in_days=90)
+    assert store.get("anthropic_api_key").startswith("sk-ant-test-")
+    assert store.expiring_within(timedelta(days=100), now) == ["anthropic_api_key"]
+    with pytest.raises(ValueError, match="unknown secret"):
+        set_secret(store, "some_other_key", "value", now)
+    with pytest.raises(ValueError, match="empty"):
+        set_secret(store, "anthropic_api_key", "  ", now)

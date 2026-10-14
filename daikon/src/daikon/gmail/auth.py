@@ -41,6 +41,12 @@ def authorize(client_secrets_file: Path, store: SecretStore) -> Credentials:
     return creds
 
 
+def build_drive_service(creds: Credentials) -> Any:
+    from googleapiclient.discovery import build
+
+    return build("drive", "v3", credentials=creds, cache_discovery=False)
+
+
 def build_service(creds: Credentials) -> Any:
     from googleapiclient.discovery import build
 
