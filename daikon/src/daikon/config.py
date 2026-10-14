@@ -34,6 +34,7 @@ class Limits:
     sms_per_day: int = 20
     approvals_per_day: int = 50
     per_sender_per_hour: int = 10
+    alerts_per_day: int = 20
 
 
 @dataclass(frozen=True)

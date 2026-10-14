@@ -44,6 +44,8 @@ def default_rules(limits: Limits) -> dict[str, Rule]:
         "sms": Rule(limits.sms_per_day, "day"),
         "approvals": Rule(limits.approvals_per_day, "day"),
         "sender_hourly": Rule(limits.per_sender_per_hour, "hour"),
+        "alerts": Rule(limits.alerts_per_day, "day"),
+        "alert_key": Rule(1, "hour"),
     }
 
 
