@@ -8,6 +8,8 @@ poll, oldest first, in small batches. Duplicate deliveries are ignored by messag
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from daikon.alerter import Alerter, Severity
 from daikon.approvals import ApprovalManager, Kind
 from daikon.audit import AuditLog
@@ -34,6 +36,7 @@ from daikon.untrusted import Source, Untrusted, normalize_email, normalize_text
 from daikon.worker import DraftFailed, Worker
 
 MAX_EDITS = 5
+REMINDER_AFTER = timedelta(hours=24)
 
 
 class Pipeline:
@@ -63,9 +66,30 @@ class Pipeline:
         self._process_pending()
 
     def housekeeping(self) -> None:
+        self._remind()
         for request_id in self._approvals.expire_due():
             self._audit.append("pipeline", "pipeline.expired", request_id=request_id)
+            self._tell(request_id, "Daikon: expired without an answer: {subject}",
+                       "This reply to {to} expired and nothing was sent. If it still matters, "
+                       "tell me and I will draft it again.")
         self._recover_sending()
+
+    def _remind(self) -> None:
+        for req in self._approvals.due_for_reminder(REMINDER_AFTER):
+            if self._tell(req.id, "Daikon: reminder, still waiting for you: {subject}",
+                          "A reply to {to} is waiting for your answer. Reply OK, EDIT or NO "
+                          "using the code in my earlier message."):
+                self._approvals.mark_reminded(req.id)
+
+    def _tell(self, request_id: str, subject: str, body: str) -> bool:
+        req = self._approvals.get(request_id)
+        if req.kind is not Kind.SEND:
+            return False
+        draft = self._store.read("draft", req.subject_id)
+        fields = {"subject": str(draft.extra["subject"])[:80],
+                  "to": ", ".join(draft.extra["recipients"])}
+        return self._notifier.send_to_dai(subject.format(**fields), body.format(**fields),
+                                          kind="reminder")
 
     def _recover_sending(self) -> None:
         now = self._clock.now()

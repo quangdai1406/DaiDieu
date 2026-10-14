@@ -10,8 +10,8 @@ Status: **Approved to start by Dai (2026-10-14): "implement, test, replan, repea
 | M2 Gmail intake | **Done** except the live check: parser, trusted auth-header parsing, sender flags, person book, rule filter, mailbox (history polling, threaded send), OAuth helpers, runner (backoff, heartbeat, instance lock), CLI `auth-gmail` and `smoke`. The real run (M2.5) waits for Dai's Day-0 Google setup |
 | M3 Worker | **Done**: `anthropic_api` gateway (no tools, schema output, caps, cost, privacy label, error kinds), prompt escaping, at-least-once processing with retry/refusal/cap handling, voice guide, model notes with cost estimate (about $10–15/month at 30 drafted emails a day) |
 | M4 Second Brain | **Done**: `ScopedDrive` (tree-confined, read-only, text-only), retriever (trust tagging, code-based sensitivity withholding), retrieve-then-draft with cited notes and one extra round |
-| M5 Notifications and approvals | **Mostly done**: digest, notifier, command channel (OK/NO/EDIT/UNDO/PAUSE/RESUME with codes), EDIT redraft, composition root (`app.py`, `doctor`, CLI). Remaining: M5.2 reminders and expiry notices; M5.5 Twilio SMS (waits for A2P registration) |
-| M6 Sender and hardening | **Mostly done** (538 tests, ruff and mypy clean): sender, policy, exactly-once and crash recovery (M6.2), Task Scheduler XML (M6.3), runbook (M6.4), RT traceability test (M6.5), daily backup. Remaining: M6.6 repo protections (manual), lockfile, Action SHA pins |
+| M5 Notifications and approvals | **Mostly done**: digest, notifier, command channel (OK/NO/EDIT/UNDO/PAUSE/RESUME with codes), EDIT redraft, composition root (`app.py`, `doctor`, CLI). M5.2 reminders (24h) and expiry notices done. Remaining: M5.5 Twilio SMS (waits for A2P registration) |
+| M6 Sender and hardening | **Mostly done** (542 tests, ruff and mypy clean): sender, policy, exactly-once and crash recovery (M6.2), Task Scheduler XML (M6.3), runbook (M6.4), RT traceability test (M6.5), daily backup. Remaining: M6.6 repo protections (manual), lockfile, Action SHA pins |
 
 
 ## 1. How we work
@@ -209,3 +209,4 @@ Rules: one task = one small commit. CI runs the full suite on Windows and unit t
 | 2026-10-14 | Design doc still mentions Pro login and `claude -p` in places | Update design in a docs task alongside M1 |
 | 2026-10-14 | **Built:** composition root, `doctor`, CLI, runbook, Task Scheduler XML, daily backup (7 kept, run from the runner; failure alerts but never fails a tick), RT traceability test (`rt_map.yaml`; RT-08/10/22 deferred to later releases) | M6.3-M6.5 done |
 | 2026-10-14 | **Replan:** next order is M5.2 reminders/expiry, then `needs_confirmation` second-channel flow and the `approvals` cap, then M5.5 SMS (after A2P). Live checks (M2.5, structured-output keywords) wait for Dai's Day-0 setup | Shadow mode is blocked only on Day-0 tasks |
+| 2026-10-14 | **Built:** M5.2 one reminder at 24h and one expiry notice (email to Dai only, no codes in reminders; reminded flag on the approval node) | Next: `needs_confirmation` flow and `approvals` cap |

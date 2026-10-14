@@ -279,6 +279,18 @@ class ApprovalManager:
     def mark_failed(self, request_id: str, reason: str) -> Decision:
         return self._finish(request_id, "failed", "approval.failed", failure=reason)
 
+    def due_for_reminder(self, after: timedelta) -> list[ApprovalRequest]:
+        now = self._clock.now()
+        return [self._view(n) for n in self._store.find(type="approval", status={"pending"})
+                if not n.extra.get("reminded") and n.created + after <= now
+                < datetime.fromisoformat(n.extra["expires_at"])]
+
+    def mark_reminded(self, request_id: str) -> None:
+        node = self._store.read("approval", request_id)
+        node.extra["reminded"] = True
+        self._store.write(node)
+        self._audit.append("approvals", "approval.reminded", request_id=request_id)
+
     def expire_due(self) -> list[str]:
         now, expired = self._clock.now(), []
         for node in self._store.find(type="approval", status={"pending"}):
