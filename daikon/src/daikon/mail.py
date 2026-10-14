@@ -32,6 +32,7 @@ class InboundEmail:
     received: datetime
     reply_to: str | None = None
     headers: tuple[tuple[str, str], ...] = ()
+    attachment_count: int = 0
 
 
 class Mailbox(Protocol):
