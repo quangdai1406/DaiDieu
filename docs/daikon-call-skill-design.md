@@ -20,6 +20,17 @@ Binding inputs: `CLAUDE.md`, `docs/daikon-design.md` §9, `docs/daikon-red-team-
 - No answering of unknown callers (see §7). No outbound telemarketing, no bulk calling.
 - No payments until the last milestone and its red-team test pass (§9).
 
+## 1a. How people reach Daikon (decided by Dai, 2026-10-14)
+
+**Exactly two ways to command or talk to Daikon: email and text message.** Both only from Dai's own verified address and verified phone number.
+
+| Channel | Who may use it | What for |
+|---|---|---|
+| Email | Dai's verified address (SPF, DKIM and DMARC pass), top-level text only | Commands, approvals, the **full question set** for an interview, free-text answers |
+| Text message (SMS) | Dai's verified phone number, sent to Daikon's number | Commands, approvals, the interview **one question at a time**, confirmation codes |
+
+Not command channels: voice (Daikon never authenticates or obeys anyone by voice, RT-22), a web page, a chat app, or an API. Offices that call back leave a message and nothing more (§7). Anyone else who emails or texts Daikon is untrusted data, never a command. The only other door is the CLI on the laptop (setup and `doctor`), which is maintenance, not a way to give Daikon tasks.
+
 ## 2. Call types
 
 | Type | Purpose | May commit to something? | Example |
@@ -79,8 +90,14 @@ Each question-set entry has: `id`, the question in plain words, `why we ask`, `s
 
 ## 5. Interview engine
 
+**Two ways to answer, one interview.** When Dai asks for a call, Daikon opens an `interview` node and does both of these:
+- **Text message, one question at a time (the default).** Each text holds one question, 2 to 4 short options with one marked Recommended, and a question counter ("Q3 of 9"). Dai replies with the option number or free text. Words that work any time: `BACK`, `SKIP`, `EMAIL` (send me the full set), `CANCEL`.
+- **Email, the full set at once.** Daikon also emails all questions for this call type in one message (each with its options and recommendation, and any answer already known from memory pre-filled and marked "from memory, confirm"). Dai replies with lines such as `Q3: 2` or `Q4: Tuesday after 3pm`. Answers from either channel go into the same node; the text thread skips questions already answered by email. A line Daikon cannot read is asked again by text.
+- Both channels accept answers only from Dai's verified number or address (§1a). Quoted text and forwarded text in an email reply are ignored.
+- Cost guard: interview texts count against their own daily cap (`interview_sms_per_day`, suggested 60), separate from the alert cap (`sms_per_day`, 20), so an interview cannot use up the alert budget. The A2P registration sample messages must include interview texts.
+
 Rules (enforced by code, not by the model):
-1. **One question per message.** Dai replies by SMS or email with a number (the suggested answer) or free text.
+1. **One question per text message.** Dai replies by SMS or email with a number (the suggested answer) or free text.
 2. Every question shows 2 to 4 suggested answers plus "something else", with one marked **Recommended** and a one-line reason.
 3. The next question is chosen by code from the question set for the call type, minus questions already answered by memory.
 4. **Memory first.** If a `provider` node holds service-level facts (for example "Joe's Tire: walk-ins OK, asks make/model/year, patch about $25"), Daikon shows them as a single confirmation: "Same shop as last time. Still right? 1. Yes (Recommended) 2. Changed". Person-level questions (name, preferred time, phone) are always asked for a new person.
@@ -232,6 +249,23 @@ Every field carries `scope: service` or `scope: person`.
 - Facts quoted from the callee (prices, hours) are stored with a date and "as said on the call". Daikon shows the age ("said 3 months ago, confirm?").
 - Stored call text is **untrusted data**: structured fields with length caps, wrapped as untrusted when read back, never instructions.
 
+### 10.4 Handover delivery (decided by Dai, 2026-10-14)
+
+Call reports go to the **existing Handovers folder** (Drive id `11FPz6dYllie6zSH175ponTbiCHzBE2K2`), in the same format the other tasks use, so Dai's Saturday task files them into `10 Daikon Calls` and the GraphRAG index (`docs/saturday-task.md`, STEP 2F). The folder is outside the Second Brain wiki, so Daikon's read-only rule for the Second Brain still holds. It does need a **new, narrow write permission**:
+
+| Item | Design |
+|---|---|
+| Who | Daikon's Google account, shared on the Handovers folder as **Editor** (and nothing else outside the Second Brain) |
+| Scope | Prefer the Google Drive scope `drive.file` (the app can touch only files it created). **Assumption to verify:** that it can create files in a folder shared as Editor. If not, the fallback is the broader `drive` scope, limited in practice by sharing (Editor on this one folder, Viewer on the Second Brain) |
+| Actions | **Create only.** Never update, move or delete (Daikon cannot change an old handover or anyone else's file) |
+| File name | `YY_MMDD_handover_daikon_calls_<type>_<id>.md`, type `call` or `inbound`, ID `DC-YYMMDD-NN` or `DM-YYMMDD-NN`; no titles, never the word "test" |
+| Content | Built by code from the call node using a fixed template; free text from the model or the callee is capped, wrapped as data, and run through the secret and sensitivity guards; a hit means the file is **not written**, Dai is alerted, and the full report still goes by email |
+| Format | `# Handover: ...`, `Tag: Daikon Calls`, Status, Open decisions, Next steps, Related files, then call details, questions and answers (service-level), lessons (Keep and Avoid), money (amount owed to Dai, never card details), **Graph lines** (edges to add), a case block with an opaque case ID and first name or initials |
+| Limits | One file per call or inbound message; size cap; daily file cap; audit log entry for every write |
+| Failure | Drive write fails: retry later, Dai still has the email report; nothing is lost |
+
+New red-team row **RT-31**: Daikon's Drive write is used to overwrite, delete or add look-alike files, write outside the folder, or put sensitive or injected text into the Second Brain. Control: create-only code path, fixed name pattern, template content, guards, caps. Test before the capability is enabled.
+
 ### 10.3 Second Brain
 Daikon stays read-only. After each call he emails Dai the full pre-call and post-call report and writes the same content as a handover file (type `call` or `inbound`, tag "Daikon Calls"). Dai's Saturday task files handovers into the Second Brain area **`10 Daikon Calls`** (created 2026-10-14: Hub, Entities, Templates) and updates **`Graph - Daikon Calls`** in `00 Control`. Daikon reads them back through `ScopedDrive`. Until filed, Daikon uses his local copy. The area and the graph are treated as sensitive: the retriever withholds them from drafts for unrelated email (`SENSITIVE_PREFIXES` includes `10 ` and any path containing "Daikon Calls").
 
@@ -259,6 +293,7 @@ New rows (also added to the red-team plan; each is deferred to v2 and needs a pa
 | RT-28 | **Unknown-caller flood / toll cost** | Fixed message, no model, no recording; daily caps; US-only geo | 100 unknown calls cost 0 model calls |
 | RT-29 | **Registry poisoning** (callee names a number to add; attacker adds a number) | Additions only by Dai's approval (`caller_registration`) | Number stated on a call is not added without OK |
 | RT-30 | **Relayed message injection**: the caller's words attack Dai's digest or commands | Message text is defanged data in the report; never contains codes; Dai's commands only from Dai's verified channels | Injected "OK ABCD" in a message does nothing |
+| RT-31 | **Handover write abuse**: Daikon's Drive write is used to overwrite or delete files, write outside the Handovers folder, or put sensitive or injected text into the Second Brain | Create-only code path; fixed file-name pattern; template content; secret and sensitivity guards; size and daily caps; audit log | A handover with a card-like string is not written; a second write to the same name is refused; nothing outside the folder is ever called |
 
 Also reused: the outbound allowlist (Daikon only dials numbers in an approved brief), the approval gate, audit log of every call, the `Untrusted` type for transcripts, privacy labels so only the brief goes to OpenRouter, and OpenRouter privacy options plus a spend limit.
 
@@ -330,7 +365,7 @@ Set a spend limit on the OpenRouter key and a per-call and daily minute cap.
 
 1. ~~Where call records live~~ **Decided:** `10 Daikon Calls` in the Second Brain, with `Graph - Daikon Calls` in `00 Control`.
 2. ~~Callback requests~~ **Decided:** every call asks the office to call back Daikon's own number (§8.1 step 7); extra numbers they call from are added only with your approval (§7.4).
-2a. The Saturday task must be extended to file Daikon Calls handovers (paste-ready text below). Which Handovers folder should Daikon's reports go to?
+2a. ~~Handovers folder~~ **Decided:** the existing Handovers folder (§10.4). The Saturday task must be extended to file Daikon Calls handovers (paste-ready text below). The full updated task is in `docs/saturday-task.md`.
     Paste-ready addition for the Saturday task: "Also file handovers tagged Daikon Calls (file name contains _handover_daikon_calls_) into the folder 10 Daikon Calls. Follow Hub - Daikon Calls and Templates - Daikon Calls: create or update the Provider, Call, Inbound message and Case pages; update Entities - Daikon Calls; add the nodes and stated edges from the handover's Graph lines to Graph - Daikon Calls, using opaque case IDs only and never names. Never store date of birth, insurance or member numbers, card numbers, ID numbers or detailed health information. Update the Index, log every change with a confidence score, and put anything unclear under Needs Dai's decision."
 2b. Offices may also **text** Daikon's number (appointment reminders). Treat texts from a number on the callback list as untrusted information relayed to you (read-only), and ignore all others? Recommended: yes, later, with its own red-team row.
 3. Inbound unknown callers: a fixed message then hang up (recommended), or voicemail-only recording of a short message that you review?

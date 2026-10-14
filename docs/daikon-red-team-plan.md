@@ -60,6 +60,8 @@ Legend: **Have** = already in the design or plan. **Add** = new control from thi
 | A29 | Phase 2: registry poisoning (a number stated on a call or planted by a stranger becomes trusted) | Unwanted callers get through | Approval gate (Have) | **Add:** registry additions only by Dai's approval (`caller_registration`) | RT-29 (deferred to v2) |
 | A30 | Phase 2: a caller's spoken message tries to inject commands or codes into Dai's digest | Fake approval, confusion | Defanging and verified command channels (Have) | **Add:** message text is data in the report, never contains approval codes, commands only from Dai's verified channels | RT-30 (deferred to v2) |
 
+| A31 | Phase 2: Daikon's Google account (Editor on the Handovers folder) is used to overwrite, delete or add look-alike handovers, or to put injected or sensitive text into the Second Brain through the Saturday task | Poisoned memory, privacy leak | Read-only on the Second Brain (Have) | **Add:** create-only code path, fixed file-name pattern, template-built content with guards, size and daily caps, audit log; the Saturday task treats call handovers as untrusted data | RT-31 (deferred to v2) |
+
 ## 4. Detection and response
 
 **Alerts to Dai (SMS, rate-limited):** a burst of rejected approvals; sends to a never-seen recipient; spend over 80% of the monthly cap; audit chain mismatch; Daikon offline over 24 hours; token or OAuth change; skill change pending; Lane 2 job outside limits.
