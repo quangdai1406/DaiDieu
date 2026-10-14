@@ -425,3 +425,11 @@ def test_all_fetched_mail_is_stored_first_and_processed_in_small_batches(tmp_pat
     r.pipe.poll()
     assert sorted(_statuses(r).values()).count("drafted") == 7
     assert len(r.sent_to(DAI)) == 7
+
+
+def test_the_voice_guide_is_part_of_the_drafting_prompt(tmp_path: Path) -> None:
+    r = rig(tmp_path)
+    r.inbound("m1", "bob@example.org", "Hello")
+    r.pipe.poll()
+    system, _ = r.gateway.calls[0]
+    assert "Voice and style" in system and "short" in system.lower()

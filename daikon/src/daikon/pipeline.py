@@ -26,6 +26,7 @@ from daikon.people import PersonBook
 from daikon.policy import DaiIdentity, OutboundPolicy
 from daikon.sender import Sender
 from daikon.senders import analyze_sender
+from daikon.style import DEFAULT_STYLE
 from daikon.untrusted import Source, Untrusted, normalize_email
 from daikon.worker import DraftFailed, Worker
 
@@ -35,11 +36,11 @@ class Pipeline:
                  gateway: Gateway, approvals: ApprovalManager, policy: OutboundPolicy,
                  identity: DaiIdentity, dai_email: str, people: PersonBook,
                  rule_filter: RuleFilter, alerter: Alerter | None = None,
-                 batch_size: int = 5) -> None:
+                 batch_size: int = 5, style: str = DEFAULT_STYLE) -> None:
         self._mailbox, self._store, self._audit, self._clock = mailbox, store, audit, clock
         self._approvals, self._identity, self._people = approvals, identity, people
         self._filter, self._alerter, self._batch = rule_filter, alerter, batch_size
-        self._worker = Worker(gateway, store, clock, audit)
+        self._worker = Worker(gateway, store, clock, audit, style)
         self._notifier = Notifier(mailbox, policy, dai_email)
         self._sender = Sender(mailbox, store, approvals, policy, people)
 

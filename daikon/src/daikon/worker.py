@@ -28,6 +28,7 @@ from daikon.gateway.base import Gateway
 from daikon.graph.node import Node
 from daikon.graph.store import GraphStore
 from daikon.prompt import DRAFT_SYSTEM, wrap_untrusted
+from daikon.style import DEFAULT_STYLE
 from daikon.untrusted import Untrusted
 
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
@@ -43,14 +44,16 @@ class DraftFailed(Exception):  # noqa: N818 - reads better than DraftFailedError
 
 
 class Worker:
-    def __init__(self, gateway: Gateway, store: GraphStore, clock: Clock, audit: AuditLog) -> None:
+    def __init__(self, gateway: Gateway, store: GraphStore, clock: Clock, audit: AuditLog,
+                 style: str = DEFAULT_STYLE) -> None:
         self._gateway, self._store, self._clock, self._audit = gateway, store, clock, audit
+        self._system = f"{DRAFT_SYSTEM}\n\nVoice and style (from Dai, trusted):\n{style}"
 
     def _ask(self, u: Untrusted) -> dict[str, Any]:
         for _ in range(ATTEMPTS):
             try:
                 raw = self._gateway.complete_json(
-                    "draft", DRAFT_SYSTEM, wrap_untrusted(u), DRAFT_SCHEMA
+                    "draft", self._system, wrap_untrusted(u), DRAFT_SCHEMA
                 )
                 return validate_draft(raw)
             except ModelRefusalError:
