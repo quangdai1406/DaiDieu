@@ -20,7 +20,7 @@ DRAFT_SYSTEM = (
 
 
 def _escape(text: str) -> str:
-    return re.sub(rf"<(/?){TAG}", rf"&lt;\1{TAG}", text, flags=re.IGNORECASE)
+    return re.sub(rf"<(\s*/?\s*){TAG}", rf"&lt;\1{TAG}", text, flags=re.IGNORECASE)
 
 
 def wrap_untrusted(u: Untrusted) -> str:
