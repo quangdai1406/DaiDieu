@@ -13,6 +13,9 @@ identity:
 # dai_only: Daikon sends only to Dai (shadow mode). Switch to "live" only after gates G1 and G2.
 outbound_mode: dai_only
 
+# Seconds an approved reply waits before sending (your time to say UNDO). 10 to 600.
+hold_seconds: 60
+
 # The Second Brain folder in Google Drive (omit to run without it). Optional voice guide file.
 # second_brain_root_id: 1j8kRB_OiGRirovIVL6gOfjIIhge0ktBk
 # style_file: style.md

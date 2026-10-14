@@ -161,3 +161,15 @@ def test_bad_phone_numbers_are_rejected(tmp_path: Path) -> None:
     text = APP_CFG.format(data=tmp_path).replace("+1 (555) 000-1111", "call me")
     with pytest.raises(ConfigError, match="phone"):
         load_config(write(tmp_path, text))
+
+
+def test_hold_seconds_defaults_to_60_and_accepts_10_to_600(tmp_path: Path) -> None:
+    text = GOOD.format(data=tmp_path / "d")
+    assert load_config(write(tmp_path, text)).hold_seconds == 60
+    assert load_config(write(tmp_path, text + "hold_seconds: 120\n")).hold_seconds == 120
+
+
+@pytest.mark.parametrize("bad", ["0", "9", "601", "true", "'60'", "1.5"])
+def test_hold_seconds_out_of_range_is_rejected(tmp_path: Path, bad: str) -> None:
+    with pytest.raises(ConfigError, match="hold_seconds"):
+        load_config(write(tmp_path, GOOD.format(data=tmp_path / "d") + f"hold_seconds: {bad}\n"))

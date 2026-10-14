@@ -37,3 +37,15 @@ def test_a_wrong_code_does_not_use_up_the_cap(tmp_path: Path) -> None:
     r.inbound("c1", DAI, f"OK {codes(r)[0]}")
     r.pipe.poll()
     assert [n.status for n in r.store.find(type="approval")] == ["held"]
+
+
+def test_the_approved_notice_uses_the_configured_hold(tmp_path: Path) -> None:
+    from datetime import timedelta
+
+    r = rig(tmp_path)
+    r.approvals._hold = timedelta(seconds=120)  # noqa: SLF001 - same as ApprovalManager(hold=...)
+    r.inbound("m1", "bob@example.org", "One")
+    r.pipe.poll()
+    r.inbound("c1", DAI, f"OK {codes(r)[0]}")
+    r.pipe.poll()
+    assert any("sending in 120s" in m.subject for m in r.sent_to(DAI))

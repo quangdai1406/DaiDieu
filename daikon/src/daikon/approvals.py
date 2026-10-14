@@ -91,6 +91,10 @@ class ApprovalManager:
         self._max_failures, self._lockout = max_failures, lockout
         self._held_grace = held_grace
 
+    @property
+    def hold(self) -> timedelta:
+        return self._hold
+
     # ---------- reads ----------
     def get(self, request_id: str) -> ApprovalRequest:
         return self._view(self._store.read("approval", request_id))

@@ -66,7 +66,7 @@ def build_app(
     store = GraphStore(data / "graph")
     audit = AuditLog(data / "audit", clock)
     limiter = Limiter(data / "limits.json", clock, default_rules(config.limits))
-    approvals = ApprovalManager(store, audit, clock)
+    approvals = ApprovalManager(store, audit, clock, hold=timedelta(seconds=config.hold_seconds))
     people = PersonBook(store, clock)
     policy = OutboundPolicy(
         data_dir=data, identity=config.identity, mode=config.outbound_mode, limiter=limiter,

@@ -307,7 +307,7 @@ class Pipeline:
             if result.ok:
                 if self._limiter is not None:
                     self._limiter.check_and_consume("approvals")
-                hold = int(self._hold_seconds())
+                hold = int(self._approvals.hold.total_seconds())
                 self._notifier.send_to_dai(
                     f"Reply approved: sending in {hold}s",
                     f"Approved. It will send in {hold} seconds.\n"
@@ -353,6 +353,3 @@ class Pipeline:
         recipients = list(draft.extra["recipients"])
         return content_hash(recipients, str(draft.extra["subject"]), draft.body)
 
-    @staticmethod
-    def _hold_seconds() -> float:
-        return 60
