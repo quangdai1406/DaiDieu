@@ -43,11 +43,11 @@ class Rig:
     messenger: FakeMessenger
 
     def inbound(self, id_: str, frm: str, text: str, auth: AuthResults = PASS, subject: str = "Hi",
-                html: str | None = None, reply_to: str | None = None) -> None:
+                html: str | None = None, reply_to: str | None = None, attachments: int = 0) -> None:
         self.mailbox.inbox.append(InboundEmail(
             id=id_, thread_id=f"t-{id_}", from_addr=frm, to=("daikon@example.com",),
             subject=subject, text=text, html=html, auth=auth, received=self.clock.now(),
-            reply_to=reply_to))
+            reply_to=reply_to, attachment_count=attachments))
 
     def digest_code(self) -> str:
         body = next(m for m in self.mailbox.sent if m.to == [DAI]).body
@@ -327,3 +327,11 @@ def test_hitting_the_daily_model_cap_alerts_dai_once(tmp_path: Path) -> None:
     r.pipe.poll()
     assert r.gateway.calls == [] and r.sent_to(DAI) == []
     assert [c for c, *_ in r.messenger.sent] == ["email"]  # warning -> email, de-duplicated
+
+
+def test_attachments_are_flagged_and_never_opened(tmp_path: Path) -> None:
+    r = rig(tmp_path)
+    r.inbound("m1", "bob@example.org", "Invoice attached", attachments=2)
+    r.pipe.poll()
+    header = next(m for m in r.mailbox.sent if m.to == [DAI]).body.partition("---- model summary")[0]
+    assert "has_attachments" in header

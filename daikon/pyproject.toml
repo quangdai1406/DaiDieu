@@ -7,7 +7,10 @@ name = "daikon"
 version = "0.1.0"
 description = "Daikon, Dai's personal AI assistant (draft-and-approve)"
 requires-python = ">=3.12"
-dependencies = ["filelock>=3.13", "keyring>=25", "pyyaml>=6", "jsonschema>=4.21"]
+dependencies = [
+  "filelock>=3.13", "keyring>=25", "pyyaml>=6", "jsonschema>=4.21",
+  "google-api-python-client>=2.100", "google-auth>=2.23", "google-auth-oauthlib>=1.1",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10", "types-PyYAML", "types-jsonschema"]
@@ -40,3 +43,7 @@ ignore = ["S101"]
 python_version = "3.12"
 strict = true
 files = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["googleapiclient.*", "google_auth_oauthlib.*", "httplib2.*"]
+ignore_missing_imports = true

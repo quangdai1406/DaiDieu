@@ -57,6 +57,8 @@ class Pipeline:
         known = self._people.known_addresses() | set(self._identity.emails)
         info = analyze_sender(msg.from_addr, msg.reply_to, known)
         flags = u.flags | info.flags
+        if msg.attachment_count:
+            flags = flags | {"has_attachments"}
         if not info.address:
             self._audit.append("pipeline", "pipeline.bad_from", message_id=msg.id)
             return
