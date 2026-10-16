@@ -1,0 +1,13 @@
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+  - repo: local
+    hooks:
+      - id: daikon-guard
+        name: block secrets and daikon-data paths
+        entry: python -m daikon.guard
+        language: system
+        pass_filenames: false
+        env: {PYTHONPATH: daikon/src}

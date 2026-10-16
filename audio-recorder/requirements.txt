@@ -1,0 +1,3 @@
+numpy>=1.26
+soundfile>=0.13          # needs libsndfile 1.1+ for MP3 export (wheels bundle it)
+PyAudioWPatch ; sys_platform == "win32"

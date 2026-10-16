@@ -1,0 +1,103 @@
+# Red-team traceability. See tests/security/test_rt_traceability.py for the rules.
+RT-01:
+  tests:
+    - tests/security/test_untrusted_corpus.py::test_corpus_case
+    - tests/security/test_prompt.py::test_hostile_text_cannot_add_or_close_blocks
+RT-02:
+  tests:
+    - tests/e2e/test_skeleton.py::test_digest_defangs_links_and_keeps_model_text_below_a_divider
+    - tests/unit/test_defang.py::test_urls_are_defanged
+RT-03:
+  tests:
+    - tests/e2e/test_skeleton.py::test_digest_defangs_links_and_keeps_model_text_below_a_divider
+    - tests/e2e/test_skeleton.py::test_new_sender_and_header_tricks_are_flagged_in_the_digest
+RT-04:
+  tests:
+    - tests/security/test_approvals.py::test_wrong_codes_lock_approvals_for_an_hour
+    - tests/security/test_approvals.py::test_code_is_single_use
+    - tests/e2e/test_skeleton.py::test_spoofed_or_unauthenticated_ok_is_ignored
+    - tests/security/test_authres.py::test_forged_header_from_another_server_is_ignored
+RT-05:
+  tests:
+    - tests/security/test_policy.py::test_first_time_recipient_needs_second_channel
+    - tests/e2e/test_confirmation.py::test_confirm_by_email_is_ignored
+    - tests/security/test_approvals.py::test_undo_during_hold_blocks_sending
+    - tests/e2e/test_skeleton.py::test_undo_during_hold_stops_the_send
+RT-06:
+  manual: {doc: docs/runbook.md, anchor: "Account hardening checklist"}
+RT-07:
+  tests:
+    - tests/security/test_policy.py::test_sms_to_dai_is_capped
+    - tests/security/test_policy.py::test_send_cap_denies_and_denial_consumes_nothing
+    - tests/unit/test_sms.py::test_other_numbers_are_ignored
+    - tests/unit/test_sms.py::test_old_messages_are_not_replayed
+    - tests/e2e/test_sms_flow.py::test_ok_from_a_stranger_number_does_nothing
+RT-08:
+  deferred: v1.1
+RT-09:
+  tests:
+    - tests/security/test_retrieval.py::test_notes_written_only_by_dai_are_owner_trust_others_are_not
+    - tests/security/test_retrieval.py::test_instruction_like_and_hidden_text_in_notes_is_flagged_or_stripped
+    - tests/security/test_scoped_drive.py::test_search_returns_only_readable_text_files_inside_the_tree
+    - tests/e2e/test_retrieval_flow.py::test_sensitive_notes_never_reach_a_prompt_but_dai_is_told_they_exist
+RT-10:
+  deferred: v1.2
+RT-11:
+  tests:
+    - tests/e2e/test_skeleton.py::test_ok_inside_quoted_or_forwarded_text_is_not_a_command
+    - tests/e2e/test_pause_flow.py::test_a_forged_or_quoted_pause_does_nothing
+RT-12:
+  tests:
+    - tests/unit/test_filters.py::test_per_sender_hourly_rate
+    - tests/e2e/test_skeleton.py::test_a_flood_from_one_sender_is_capped
+    - tests/unit/test_gateway_anthropic.py::test_monthly_spend_cap_blocks_and_overshoot_is_still_recorded
+RT-13:
+  tests:
+    - tests/contract/test_gmail_parse.py::test_attachments_are_counted_and_content_is_never_requested
+    - tests/e2e/test_skeleton.py::test_attachments_are_flagged_and_never_opened
+RT-14:
+  ci: {file: .github/workflows/daikon-ci.yml, contains: pip-audit}
+RT-15:
+  manual: {doc: docs/runbook.md, anchor: "Repository protections"}
+RT-16:
+  manual: {doc: docs/runbook.md, anchor: "Revoke everything (incident drill)"}
+RT-17:
+  tests:
+    - tests/unit/test_audit.py::test_editing_an_entry_is_detected
+    - tests/unit/test_audit.py::test_tail_truncation_needs_the_external_head
+RT-18:
+  ci: {file: .github/workflows/daikon-ci.yml, contains: 'paths: ["daikon/**"'}
+RT-19:
+  tests:
+    - tests/security/test_senders.py::test_lookalike_domains_are_flagged
+    - tests/security/test_senders.py::test_display_name_with_a_different_address_is_flagged
+    - tests/security/test_authres.py::test_typical_gmail_pass
+RT-20:
+  tests:
+    - tests/security/test_policy.py::test_attachment_or_sensitive_content_is_high_risk
+    - tests/security/test_policy.py::test_first_time_recipient_needs_second_channel
+RT-21:
+  tests:
+    - tests/security/test_approvals.py::test_begin_send_waits_for_hold_then_happens_exactly_once
+    - tests/e2e/test_send_recovery.py::test_recovery_never_resends_even_when_called_repeatedly
+    - tests/e2e/test_skeleton.py::test_tampering_with_the_draft_after_the_digest_blocks_approval
+RT-22:
+  deferred: v2
+RT-23:
+  deferred: v2
+RT-24:
+  deferred: v2
+RT-25:
+  deferred: v2
+RT-26:
+  deferred: v2
+RT-27:
+  deferred: v2
+RT-28:
+  deferred: v2
+RT-29:
+  deferred: v2
+RT-30:
+  deferred: v2
+RT-31:
+  deferred: v2
