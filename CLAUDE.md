@@ -1,7 +1,7 @@
 # Superpowers Workflow (mandatory for every project)
 
 For any non-trivial task (feature, refactor, multi-step change), follow these phases **in order**.
-Invoke each named skill with the Skill tool. Do not skip or reorder phases. Trivial one-line fixes may skip phases 1-9 but still use 10-15.
+Invoke each named skill with the Skill tool. Do not skip or reorder phases. Trivial one-line fixes may skip phases 1-9 but still use 10-16.
 
 Priority: user's direct instructions > this file > skill defaults.
 
