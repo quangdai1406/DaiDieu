@@ -16,7 +16,7 @@ Priority: user's direct instructions > this file > skill defaults.
 ## Setup phase
 7. **Worktree** — `superpowers:using-git-worktrees`. Do all implementation in an isolated worktree/branch.
 8. **Code map** — `code-graph`. Build the code graph before touching shared code.
-9. **Index** — write/refresh `docs/CODE_INDEX.md` listing every file and its functions/classes (one line each). Refresh after each task that adds or renames symbols.
+9. **Index** — write `docs/CODE_INDEX.md` listing every file and its functions/classes (one line each).
 
 ## Build loop (repeat per plan task until the plan is finished)
 10. **Multi-agent runner** — `multi-agent-job-runner` (with `superpowers:subagent-driven-development`) to dispatch tasks.
@@ -25,11 +25,12 @@ Priority: user's direct instructions > this file > skill defaults.
 13. **Debug** — `superpowers:systematic-debugging` on any failure. Find root cause before fixing.
 14. **Verify** — `superpowers:verification-before-completion`. Run tests/build; show evidence before claiming done.
 15. **Review** — `superpowers:requesting-code-review` (and `superpowers:receiving-code-review` for feedback).
-16. **Merge** — `superpowers:finishing-a-development-branch`. Then tick the task in the PROGRESS file and refresh the code index.
+16. **Merge** — `superpowers:finishing-a-development-branch`. Then tick the task in the PROGRESS file.
 
 **Repeat 10-16 for the next task until every item in the PROGRESS file is done.** Then do a final verify + review of the whole plan and report.
 
 ## Rules
+- **After EVERY change** (any edit, add, rename, move or delete of code, not just per task): update the code graph (`code-graph`) AND `docs/CODE_INDEX.md` in the same commit. A change is not done until both match the code.
 - Token-efficient: be terse, read only what is needed, no repeated re-derivation.
 - Never claim success without verification output.
 - If a named skill is unavailable in the session, say so, then perform that phase manually; do not silently skip it.
