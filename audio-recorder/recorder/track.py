@@ -1,4 +1,3 @@
-"""Timestamp-aligned, crash-tolerant WAV track writer."""
 
 import threading
 
@@ -7,14 +6,6 @@ import soundfile as sf
 
 
 class TrackWriter:
-    """Write mono chunks into a 16-bit WAV, placing each chunk by its timestamp.
-
-    All tracks of a session share ``t0``, so they stay aligned with each other.
-    WASAPI loopback delivers no data while nothing is playing, so a chunk that
-    arrives later than the audio written so far gets silence inserted first.
-    Jitter smaller than ``tolerance`` seconds is ignored; a chunk that overlaps
-    already-written audio by more than ``tolerance`` is trimmed.
-    """
 
     def __init__(self, path, sample_rate, t0, tolerance=0.05, flush_seconds=2.0):
         self.path = path
@@ -53,7 +44,6 @@ class TrackWriter:
             self._flush_locked()
 
     def close(self, end_time=None):
-        """Finish the file, optionally padding with silence up to ``end_time``."""
         with self._lock:
             if self._file is None:
                 return

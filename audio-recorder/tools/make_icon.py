@@ -1,7 +1,3 @@
-"""Regenerate recorder/app.ico: a red record dot in a white ring on a dark rounded square.
-
-Pure Python (no Pillow). Run:  python tools/make_icon.py
-"""
 
 import math
 import struct
@@ -21,7 +17,6 @@ def blend(base, top, alpha):
 
 
 def pixel(u, v, size):
-    """RGBA of one pixel; u and v run from 0 to 1. Distances are scaled to pixels for soft edges."""
     qx, qy = abs(u - 0.5) - 0.3, abs(v - 0.5) - 0.3
     box = math.hypot(max(qx, 0), max(qy, 0)) + min(max(qx, qy), 0) - 0.2
     alpha = clamp(0.5 - box * size)
@@ -34,7 +29,7 @@ def pixel(u, v, size):
 def png(size):
     rows = []
     for y in range(size):
-        row = bytearray([0])  # filter type: none
+        row = bytearray([0])
         for x in range(size):
             row += bytes(pixel((x + 0.5) / size, (y + 0.5) / size, size))
         rows.append(bytes(row))

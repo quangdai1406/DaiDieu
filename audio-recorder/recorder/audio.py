@@ -1,10 +1,8 @@
-"""Small, dependency-light audio helpers: mono downmix and streaming resampling."""
 
 import numpy as np
 
 
 def to_mono(samples):
-    """Return float32 mono from a 1-D array or an (n, channels) array."""
     samples = np.asarray(samples, dtype=np.float32)
     if samples.ndim == 1:
         return samples
@@ -12,13 +10,6 @@ def to_mono(samples):
 
 
 class LinearResampler:
-    """Stateful linear-interpolation resampler for chunked mono audio.
-
-    Chunks may be any size; the fractional read position and the last input
-    sample carry over, so chunked output matches one-shot output. Linear
-    interpolation has no low-pass filter, so use it between close rates
-    (44.1 kHz <-> 48 kHz). Large downsampling ratios will alias.
-    """
 
     def __init__(self, in_rate, out_rate):
         if in_rate <= 0 or out_rate <= 0:
@@ -26,9 +17,9 @@ class LinearResampler:
         self.in_rate = in_rate
         self.out_rate = out_rate
         self._step = in_rate / out_rate
-        self._next = 0.0  # position of next output sample, in global input coordinates
-        self._seen = 0  # input samples consumed before the current chunk
-        self._last = None  # final input sample of the previous chunk
+        self._next = 0.0
+        self._seen = 0
+        self._last = None
 
     def process(self, chunk):
         chunk = np.asarray(chunk, dtype=np.float32)

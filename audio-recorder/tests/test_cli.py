@@ -115,7 +115,7 @@ def test_gui_command_opens_the_window_with_the_backend(monkeypatch):
 def test_gui_command_explains_a_missing_tkinter(monkeypatch, capsys):
     import sys
 
-    monkeypatch.setitem(sys.modules, "recorder.gui", None)  # makes the import fail
+    monkeypatch.setitem(sys.modules, "recorder.gui", None)
     assert main(["gui"], backend=FakeBackend()) == 1
     assert "tkinter" in capsys.readouterr().out
 
@@ -236,7 +236,7 @@ def test_transcribe_shows_live_progress(tmp_path, capsys):
 def test_progress_line_shows_elapsed_time_and_speed(capsys):
     from recorder.cli import progress_printer
 
-    ticks = iter([100.0, 102.0])  # when it started, then at the first update
+    ticks = iter([100.0, 102.0])
     show = progress_printer(clock=lambda: next(ticks))
     show(4.0, 8.0)
     out = capsys.readouterr().out
@@ -247,7 +247,7 @@ def test_progress_line_shows_elapsed_time_and_speed(capsys):
 def test_progress_finish_prints_a_summary(capsys):
     from recorder.cli import progress_printer
 
-    ticks = iter([0.0, 4.0, 5.0])  # start, last update, finish
+    ticks = iter([0.0, 4.0, 5.0])
     show = progress_printer(clock=lambda: next(ticks))
     show(8.0, 8.0)
     capsys.readouterr()

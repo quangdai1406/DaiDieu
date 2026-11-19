@@ -1,8 +1,6 @@
-"""Deterministic stand-ins for real audio devices."""
 
 
 class FakeSource:
-    """An AudioSource the test drives by calling ``emit``."""
 
     def __init__(self, name, sample_rate, fail_on_start=False):
         self.name = name
@@ -34,7 +32,6 @@ class FakeClock:
 
 
 class FakeBackend:
-    """Stands in for WasapiBackend: hands out two FakeSources."""
 
     def __init__(self, rate=8000):
         self.mic = FakeSource("mic", rate)
@@ -56,19 +53,17 @@ class FakeBackend:
 
 
 class SyncRunner:
-    """Runs background work immediately, like ThreadRunner but deterministic."""
 
     def submit(self, work, done):
         try:
             result = work()
-        except BaseException as exc:  # noqa: BLE001 - mirrors ThreadRunner
+        except BaseException as exc:
             done(None, exc)
         else:
             done(result, None)
 
 
 class ManualRunner:
-    """Holds background work until the test calls run_all()."""
 
     def __init__(self):
         self.pending = []
@@ -81,7 +76,7 @@ class ManualRunner:
         for work, done in pending:
             try:
                 result = work()
-            except BaseException as exc:  # noqa: BLE001
+            except BaseException as exc:
                 done(None, exc)
             else:
                 done(result, None)

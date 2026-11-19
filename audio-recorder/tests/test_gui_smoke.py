@@ -1,4 +1,3 @@
-"""Drives the real tkinter widgets. Skipped where there is no tkinter or display."""
 import time
 from datetime import datetime
 from types import SimpleNamespace
@@ -8,9 +7,9 @@ import pytest
 
 tk = pytest.importorskip("tkinter")
 
-from recorder.controller import AppController, ThreadRunner  # noqa: E402
-from recorder.gui import App  # noqa: E402
-from tests.fakes import FakeBackend, FakeClock  # noqa: E402
+from recorder.controller import AppController, ThreadRunner
+from recorder.gui import App
+from tests.fakes import FakeBackend, FakeClock
 
 RATE = 48000
 
@@ -67,7 +66,7 @@ def test_buttons_follow_the_workflow(window):
     window.backend.mic.emit(1000.0, np.full(RATE, 0.2, dtype=np.float32))
     window.backend.loopback.emit(1000.0, np.full(RATE, 0.1, dtype=np.float32))
     window.clock.now = 1065.0
-    assert pump(window, lambda: app.timer.cget("text") == "0:01:05")  # redrawn on the next tick
+    assert pump(window, lambda: app.timer.cget("text") == "0:01:05")
 
     app.buttons["stop"].invoke()
     assert pump(window, lambda: not disabled(window, "save"))

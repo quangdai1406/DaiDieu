@@ -166,7 +166,7 @@ def test_save_offers_the_session_name_as_default(rig):
 
 def test_cancelling_save_changes_nothing(rig, tmp_path):
     rig.record_and_stop()
-    assert not rig.ctrl.save()  # ask_save_target returns None
+    assert not rig.ctrl.save()
     snap = rig.ctrl.snapshot()
     assert snap.state is State.STOPPED
     assert snap.message_kind == "info"
@@ -315,7 +315,6 @@ def test_format_elapsed():
     assert format_elapsed(3725) == "1:02:05"
 
 
-# ---- transcribing an external audio file ------------------------------------------
 
 
 def make_audio(tmp_path, name="Voice 261013_093023.m4a"):
@@ -431,7 +430,7 @@ def test_the_status_line_shows_progress_while_transcribing(tmp_path):
 
     def segments():
         yield SimpleNamespace(start=0.0, end=4.0, text="first")
-        seen.append(holder["rig"].ctrl.snapshot().message)  # runs after progress for segment 1
+        seen.append(holder["rig"].ctrl.snapshot().message)
         yield SimpleNamespace(start=4.0, end=8.0, text="second")
 
     class TimedModel:
@@ -442,7 +441,7 @@ def test_the_status_line_shows_progress_while_transcribing(tmp_path):
     holder["rig"] = rig
     rig.ctrl.transcribe_file()
     assert "0:00:04 of 0:00:08 transcribed (50%)" in seen[0]
-    assert "transcribed (" not in rig.ctrl.snapshot().message  # gone once finished
+    assert "transcribed (" not in rig.ctrl.snapshot().message
 
 
 def test_the_status_line_shows_elapsed_time_and_speed(tmp_path):
@@ -451,8 +450,8 @@ def test_the_status_line_shows_elapsed_time_and_speed(tmp_path):
 
     def segments():
         yield SimpleNamespace(start=0.0, end=4.0, text="first")
-        holder["rig"].clock.now = 1002.0  # two seconds after the transcription started
-        yield SimpleNamespace(start=4.0, end=8.0, text="second")  # progress for segment 1 is already in
+        holder["rig"].clock.now = 1002.0
+        yield SimpleNamespace(start=4.0, end=8.0, text="second")
         seen.append(holder["rig"].ctrl.snapshot().message)
 
     class TimedModel:

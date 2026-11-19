@@ -1,15 +1,3 @@
-# Creates a "Meeting Recorder" shortcut on your Desktop that opens the window.
-#
-# Run it from this folder (the one that contains .venv):
-#   powershell -ExecutionPolicy Bypass -File .\create-shortcut.ps1
-#
-# Options:
-#   -Device cpu            use the processor instead of the GPU (default: cuda)
-#   -Model medium.en       a different speech model (default: small.en)
-#   -Console               show a console window (handy if something does not start)
-#   -Name "My Recorder"    a different shortcut name
-#
-# Run it again after moving or re-downloading the app: it replaces the old shortcut.
 param(
     [string]$Device = "cuda",
     [string]$Model = "small.en",
