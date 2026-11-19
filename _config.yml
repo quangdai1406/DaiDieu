@@ -1,7 +1,5 @@
-# Site settings
-baseurl: "" # the subpath of your site, e.g. /blog/
-url: "https://daidieu.com" # the base hostname & protocol for your site
+baseurl: ""
+url: "https://daidieu.com"
 enforce_ssl: www.daidieu.com
 
-# Build settings
 markdown: kramdown

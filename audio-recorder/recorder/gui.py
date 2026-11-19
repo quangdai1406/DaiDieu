@@ -1,8 +1,3 @@
-"""The four-button window: Record, Stop, Save, Transcribe.
-
-Only drawing lives here. Every rule is in controller.py, which is tested
-without a display.
-"""
 
 import sys
 import tkinter as tk
@@ -17,7 +12,6 @@ RED, GREEN = "#b00020", "#1b6e2d"
 
 
 def ask_save_target(default_name):
-    """Ask for a folder name to copy the recording into, and whether to add an MP3."""
     chosen = filedialog.asksaveasfilename(
         title="Choose where to save, and a name for this recording",
         initialfile=default_name, confirmoverwrite=False)
@@ -30,7 +24,6 @@ def ask_save_target(default_name):
 
 
 def ask_open_file():
-    """Ask for an audio or video file to transcribe."""
     chosen = filedialog.askopenfilename(
         title="Choose an audio or video file to transcribe",
         filetypes=[("Audio and video", "*.m4a *.mp3 *.wav *.mp4 *.flac *.ogg *.aac *.wma *.webm *.mkv"),
@@ -46,7 +39,7 @@ class App:
         icon = Path(__file__).with_name("app.ico")
         if sys.platform == "win32" and icon.exists():
             try:
-                root.iconbitmap(default=str(icon))  # title bar and taskbar
+                root.iconbitmap(default=str(icon))
             except tk.TclError:
                 pass
         root.minsize(460, 560)
@@ -104,7 +97,6 @@ class App:
         self.render()
 
     def refresh(self):
-        """Timer tick: finish background work, redraw, schedule the next tick."""
         self.runner.poll()
         self.render()
         self._after_id = self.root.after(REFRESH_MS, self.refresh)
@@ -129,7 +121,7 @@ class App:
             self.text.configure(state="disabled")
 
     def close(self):
-        self.controller.shutdown()  # never lose a recording in progress
+        self.controller.shutdown()
         self.root.destroy()
 
     def _unexpected_error(self, exc_type, exc, tb):

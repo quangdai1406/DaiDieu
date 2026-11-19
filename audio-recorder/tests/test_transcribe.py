@@ -164,7 +164,7 @@ def test_add_nvidia_dll_dirs_finds_the_bin_folders(tmp_path, monkeypatch):
     parts = os.environ["PATH"].split(os.pathsep)
     assert set(dirs) <= set(parts) and "old_path" in parts
 
-    add_nvidia_dll_dirs([str(site)])  # calling again must not pile up PATH entries
+    add_nvidia_dll_dirs([str(site)])
     assert os.environ["PATH"].split(os.pathsep).count(str(cublas_bin)) == 1
 
 

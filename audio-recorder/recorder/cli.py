@@ -1,4 +1,3 @@
-"""Command line interface: ``python -m recorder devices | record | transcribe``."""
 
 import argparse
 import sys
@@ -64,7 +63,6 @@ def default_gui_out():
 
 
 def default_waiter(session):
-    """Show live levels until Ctrl+C."""
     try:
         while True:
             levels = "  ".join(f"{name}: {'#' * int(peak * 20):<20}" for name, peak in session.peaks.items())
@@ -75,7 +73,6 @@ def default_waiter(session):
 
 
 def progress_printer(clock=time.monotonic):
-    """A callback that rewrites one console line: '00:12:34 of 00:45:10 (27%)  elapsed 00:02:10, 5.8x real time'."""
     started = clock()
     state = {"last": None, "done": 0.0, "shown": False}
 
@@ -122,7 +119,7 @@ def run_transcribe(target, args, model_loader):
         else:
             txt, srt = transcribe_file(model, target, args.language, progress)
         progress.finish()
-    except (Exception, SystemExit) as exc:  # noqa: BLE001 - always say what went wrong
+    except (Exception, SystemExit) as exc:
         print(explain_error(exc))
         return 1
     print(f"Transcript: {txt}\nSubtitles:  {srt}")
@@ -130,7 +127,6 @@ def run_transcribe(target, args, model_loader):
 
 
 def run_probe(model, device):
-    """Run the self-test in a separate process; returns (ok, exit code, last output lines)."""
     import subprocess
 
     try:

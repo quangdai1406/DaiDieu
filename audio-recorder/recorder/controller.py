@@ -1,8 +1,3 @@
-"""All the logic of the four-button window, with no GUI toolkit in it.
-
-The window only draws what ``AppController.snapshot()`` says and forwards
-button clicks, so every rule here can be tested without a display.
-"""
 
 import queue
 import shutil
@@ -47,17 +42,12 @@ class Snapshot:
     speaker_level: float
     enabled: dict
     message: str
-    message_kind: str  # "info" | "ok" | "error"
+    message_kind: str
     transcript: str
     session_dir: Path | None
 
 
 class ThreadRunner:
-    """Run slow work on a thread; finished callbacks run on whoever calls ``poll()``.
-
-    The GUI calls ``poll()`` from its own timer, so widgets are only ever touched
-    from the GUI thread.
-    """
 
     def __init__(self):
         self._finished = queue.Queue()
@@ -66,7 +56,7 @@ class ThreadRunner:
         def run():
             try:
                 result = work()
-            except BaseException as exc:  # noqa: BLE001 - includes SystemExit from load_model
+            except BaseException as exc:
                 self._finished.put((done, None, exc))
             else:
                 self._finished.put((done, result, None))
@@ -74,7 +64,6 @@ class ThreadRunner:
         threading.Thread(target=run, name="background-work", daemon=True).start()
 
     def poll(self):
-        """Run callbacks for finished work; return how many ran."""
         ran = 0
         while True:
             try:
@@ -92,8 +81,8 @@ class AppController:
                  ask_open_file=None):
         self._backend = backend
         self._runner = runner
-        self.ask_save_target = ask_save_target  # (default_name) -> (folder, want_mp3) | None
-        self.ask_open_file = ask_open_file  # () -> Path | None
+        self.ask_save_target = ask_save_target
+        self.ask_open_file = ask_open_file
         self._model_loader = model_loader
         self._out_base = Path(out_base)
         self._now = now
@@ -107,11 +96,10 @@ class AppController:
         self._started_at = 0.0
         self._elapsed = 0.0
         self._transcript = ""
-        self._progress = None  # (seconds done, total seconds or None) while transcribing
+        self._progress = None
         self._progress_started = 0.0
         self._message, self._kind = "Ready. Press Record to start.", "info"
 
-    # ---- what the window shows -------------------------------------------------
 
     def snapshot(self):
         recording = self._state is State.RECORDING
@@ -138,7 +126,7 @@ class AppController:
         return f"{self._message}\n{where}, {pace}"
 
     def _set_progress(self, done, total):
-        self._progress = (done, total)  # called from the worker thread; one atomic assignment
+        self._progress = (done, total)
 
     def _is_enabled(self, button):
         if self._state is State.IDLE:
@@ -158,7 +146,6 @@ class AppController:
     def _say(self, text, kind="info"):
         self._message, self._kind = text, kind
 
-    # ---- the four buttons ------------------------------------------------------
 
     def record(self):
         if self._state not in (State.IDLE, State.STOPPED):
@@ -169,11 +156,11 @@ class AppController:
             session_dir = unique_dir(self._out_base, f"{self._now():%y_%m%d_%H%M}_meeting")
             session = RecordingSession(session_dir, *sources, mode="meeting", clock=self._clock)
             session.start()
-        except (Exception, SystemExit) as exc:  # noqa: BLE001 - shown in plain words
+        except (Exception, SystemExit) as exc:
             for source in sources or ():
                 try:
                     source.stop()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pass
             self._say(str(exc) if isinstance(exc, SystemExit) else f"Could not start recording: {exc}",
                       "error")
@@ -273,7 +260,6 @@ class AppController:
                       "in the recording folder.", "ok")
 
     def transcribe_file(self):
-        """Transcribe an audio file chosen by the user; the current recording stays as it is."""
         if self._state not in (State.IDLE, State.STOPPED) or self.ask_open_file is None:
             return False
         chosen = self.ask_open_file()
@@ -308,10 +294,9 @@ class AppController:
         self._say(f"Transcript saved next to the file: {txt.name}", "ok")
 
     def shutdown(self):
-        """Call when the window closes: never lose a recording in progress."""
         if self._state is State.RECORDING and self._session is not None:
             try:
                 self._session.stop()
-            except Exception:  # noqa: BLE001 - the window is closing anyway
+            except Exception:
                 pass
             self._state = State.STOPPED

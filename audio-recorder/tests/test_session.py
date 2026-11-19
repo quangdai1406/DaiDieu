@@ -50,7 +50,7 @@ def test_silent_loopback_is_padded_and_stays_aligned(tmp_path):
     session, mic, loop, clock = make(tmp_path)
     session.start()
     mic.emit(1000.0, tone(2.0, 0.2))
-    loop.emit(1001.0, tone(1.0, 0.1))  # speakers were silent for the first second
+    loop.emit(1001.0, tone(1.0, 0.1))
     clock.now = 1002.0
     session.stop()
 

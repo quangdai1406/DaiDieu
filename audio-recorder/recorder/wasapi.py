@@ -1,8 +1,3 @@
-"""Windows capture backend: microphone and speaker loopback via PyAudioWPatch (WASAPI).
-
-NOTE: only the logic around the library is unit-tested (with a fake module);
-real device capture has to be checked on a Windows machine.
-"""
 
 import time
 
@@ -18,13 +13,11 @@ def _import_pyaudio():
 
 
 def int16_to_float(buffer, channels):
-    """Convert raw little-endian int16 bytes to float32 shaped (frames, channels)."""
     data = np.frombuffer(buffer, dtype=np.int16).astype(np.float32) / 32768.0
     return data.reshape(-1, channels)
 
 
 class WasapiSource:
-    """One WASAPI input stream. ``loopback=True`` records what the speakers play."""
 
     def __init__(self, name, device_index=None, loopback=False, pyaudio=None,
                  clock=time.monotonic, frames_per_buffer=1024):
@@ -55,7 +48,6 @@ class WasapiSource:
         mod = self._pa_module
 
         def on_audio(in_data, frame_count, time_info, status):
-            # Timestamp the first frame of this buffer on the shared monotonic clock.
             timestamp = self._clock() - frame_count / self.sample_rate
             callback(timestamp, int16_to_float(in_data, self.channels))
             return (None, mod.paContinue)
@@ -83,7 +75,6 @@ class WasapiBackend:
         return self._pa_module
 
     def list_devices(self):
-        """Return ``[{index, name, kind, channels, rate, default}]`` for WASAPI inputs."""
         mod = self._module()
         pa = mod.PyAudio()
         try:

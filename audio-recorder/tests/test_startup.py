@@ -14,7 +14,7 @@ def test_nothing_changes_when_the_streams_exist(tmp_path):
 
 
 def test_a_windowless_launch_writes_to_a_log_file(tmp_path, monkeypatch):
-    monkeypatch.setattr(sys, "stdout", None)  # what pythonw.exe starts with
+    monkeypatch.setattr(sys, "stdout", None)
     monkeypatch.setattr(sys, "stderr", None)
     log = prepare_streams(tmp_path / "logs")
     try:

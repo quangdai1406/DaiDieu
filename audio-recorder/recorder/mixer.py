@@ -1,4 +1,3 @@
-"""Block-wise mixing of WAV files, so long recordings never load fully into RAM."""
 
 from pathlib import Path
 
@@ -12,11 +11,6 @@ def _mono_block(handle, frames):
 
 
 def mix_wavs(inputs, out_path, blocksize=65536):
-    """Mix ``[(path, gain), ...]`` into one mono 16-bit WAV.
-
-    Inputs must share a sample rate. Shorter inputs are padded with silence,
-    and the sum is hard-clipped to [-1, 1]. Missing files are skipped.
-    """
     present = [(Path(p), g) for p, g in inputs if Path(p).exists()]
     if not present:
         raise FileNotFoundError("no input files to mix")
@@ -45,7 +39,6 @@ def mix_wavs(inputs, out_path, blocksize=65536):
 
 
 def export_mp3(wav_path, mp3_path, blocksize=65536):
-    """Convert a mono WAV to MP3 (about 10x smaller; Word's Transcribe accepts it)."""
     with sf.SoundFile(str(wav_path)) as src, sf.SoundFile(
             str(mp3_path), mode="w", samplerate=src.samplerate, channels=1, format="MP3",
             bitrate_mode="VARIABLE", compression_level=0.2) as dst:

@@ -1,8 +1,3 @@
-"""Local transcription: one Whisper pass per track, merged into a labeled transcript.
-
-Because the user wears headphones, the mic track holds only their voice and the
-loopback track holds everyone else, so the track gives the speaker label.
-"""
 
 import os
 import sys
@@ -10,7 +5,6 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 
-# track file name -> label used in transcripts
 SPEAKERS = {"me": "Me", "others": "Others"}
 
 
@@ -38,7 +32,6 @@ def merge_segments(*segment_lists):
 
 
 def coalesce(segments, max_gap=1.5):
-    """Join consecutive segments of the same speaker that are close together."""
     out = []
     for s in segments:
         if out and out[-1].speaker == s.speaker and s.start - out[-1].end <= max_gap:
@@ -49,7 +42,6 @@ def coalesce(segments, max_gap=1.5):
 
 
 def _label(segment):
-    # an external file has no known speakers, so its segments carry no label
     return f"{segment.speaker}: " if segment.speaker else ""
 
 
@@ -70,19 +62,12 @@ GPU_HINT = ("For the GPU, run: pip install -r requirements-gpu.txt (and update y
 
 
 def resolve_compute_type(device, compute_type):
-    """The precision to use: what was asked for, else int8 on the CPU and 'auto' on a GPU."""
     if compute_type:
         return compute_type
     return "int8" if device == "cpu" else "auto"
 
 
 def add_nvidia_dll_dirs(search_paths=None):
-    """Let Windows find the pip-installed NVIDIA libraries (cuBLAS, cuDNN).
-
-    ``pip install nvidia-cublas-cu12 nvidia-cudnn-cu12`` puts their DLLs under
-    ``site-packages/nvidia/*/bin``, which Windows does not search by itself.
-    Returns the folders that were added.
-    """
     found = []
     for base in (sys.path if search_paths is None else search_paths):
         nvidia = Path(base) / "nvidia" if base else None
@@ -105,7 +90,6 @@ def add_nvidia_dll_dirs(search_paths=None):
 
 
 def explain_error(error):
-    """A plain-words message for a failed transcription."""
     if isinstance(error, SystemExit):
         return str(error)
     text = f"Transcription failed: {error}"
@@ -115,7 +99,6 @@ def explain_error(error):
 
 
 def load_model(name="base.en", device="cpu", compute_type=None):
-    """Load a faster-whisper model (imported lazily: it is an optional dependency)."""
     if device != "cpu":
         add_nvidia_dll_dirs()
     try:
@@ -126,11 +109,10 @@ def load_model(name="base.en", device="cpu", compute_type=None):
 
 
 def transcribe_track(model, wav_path, speaker, language="en", on_progress=None):
-    """Transcribe one file. ``on_progress(seconds_done, total_seconds_or_None)`` is called per segment."""
     segments, info = model.transcribe(str(wav_path), language=language, vad_filter=True)
     total = getattr(info, "duration", None)
     out = []
-    for s in segments:  # lazy: the model works while this loop runs
+    for s in segments:
         if s.text.strip():
             out.append(Segment(s.start, s.end, speaker, s.text.strip()))
         if on_progress:
@@ -139,10 +121,6 @@ def transcribe_track(model, wav_path, speaker, language="en", on_progress=None):
 
 
 def write_transcripts(model, session_dir, speakers, language="en", on_progress=None):
-    """Transcribe ``{track name: speaker label}`` found in ``session_dir``.
-
-    Writes ``transcript.txt`` and ``transcript.srt`` and returns their paths.
-    """
     session_dir = Path(session_dir)
     per_track = []
     for track, speaker in speakers.items():
@@ -157,7 +135,6 @@ def write_transcripts(model, session_dir, speakers, language="en", on_progress=N
 
 
 def _free_output_pair(audio_path):
-    """``<name>.transcript.txt/.srt`` beside the audio, or ``_2``, ``_3``... if taken."""
     n = 1
     while True:
         tag = "" if n == 1 else f"_{n}"
@@ -169,11 +146,6 @@ def _free_output_pair(audio_path):
 
 
 def transcribe_file(model, audio_path, language="en", on_progress=None):
-    """Transcribe any audio or video file the Whisper decoder can read (m4a, mp3, wav, mp4...).
-
-    Writes the transcript beside the file and never overwrites an earlier one.
-    Returns the ``(txt, srt)`` paths.
-    """
     audio_path = Path(audio_path)
     if not audio_path.is_file():
         raise FileNotFoundError(f"File not found: {audio_path}")

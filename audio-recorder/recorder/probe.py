@@ -1,8 +1,3 @@
-"""Tiny self-test behind `python -m recorder check`.
-
-Runs in its own process, so a crash inside a native library is reported by
-the parent instead of taking the whole program down.
-"""
 
 import sys
 
@@ -17,8 +12,8 @@ def main(argv=None):
     try:
         model = transcribe.load_model(model_name, device, None)
         segments, _info = model.transcribe(np.zeros(16000, dtype="float32"), language="en")
-        list(segments)  # decoding is lazy: this is what touches the GPU libraries
-    except (Exception, SystemExit) as exc:  # noqa: BLE001 - a plain reason beats a traceback here
+        list(segments)
+    except (Exception, SystemExit) as exc:
         print(transcribe.explain_error(exc))
         return 1
     print("PROBE OK")

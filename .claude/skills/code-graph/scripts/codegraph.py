@@ -1,13 +1,4 @@
 #!/usr/bin/env python3
-"""Lightweight code graph for Claude Code: files, definitions, imports, references, tests.
-
-Standard library only. Static and approximate: Python is parsed with `ast`,
-JS/TS with regular expressions. Anything it cannot resolve is reported as external
-or unknown, never guessed.
-
-Usage: codegraph.py [--root DIR] [--rebuild] [--json] <command> ...
-Commands: build | summary | impact PATH | deps PATH | symbol NAME | tests-for PATH | changed
-"""
 import argparse
 import ast
 import json
@@ -36,7 +27,6 @@ COMMON_NAMES = {
 TEST_DIRS = {"test", "tests", "__tests__", "spec", "specs"}
 
 
-# ---------------------------------------------------------------- discovery
 
 def find_root(arg):
     if arg:
@@ -83,7 +73,6 @@ def is_test_path(rel):
     )
 
 
-# ---------------------------------------------------------------- python
 
 def find_py(files, parts):
     for prefix in ("", "src/", "lib/"):
@@ -163,7 +152,6 @@ def parse_python(rel, text, files):
                     unresolved = True
                     if target:
                         import_names[target].add(a.name)
-            # `from pkg import submodule` only needs the submodule, not the package __init__.py
             if target and (unresolved or not target.endswith("__init__.py")):
                 imports.add(target)
             if not hit and not node.level and base:
@@ -180,7 +168,6 @@ def parse_python(rel, text, files):
     }
 
 
-# ---------------------------------------------------------------- javascript / typescript
 
 JS_IMPORT_RES = [
     re.compile(r"""\bimport\s+(?:[\w*${}\s,]+?\s+from\s+)?['"]([^'"]+)['"]"""),
@@ -221,7 +208,6 @@ def resolve_js(files, rel, spec):
         for ext in sorted(JS_EXT):
             if b + "/index" + ext in files:
                 return b + "/index" + ext
-        # TypeScript ESM style: import "./x.js" for x.ts
         stem, ext = os.path.splitext(b)
         if ext in (".js", ".jsx", ".mjs", ".cjs"):
             for alt in (".ts", ".tsx"):
@@ -279,7 +265,6 @@ def parse_js(rel, text, files):
             "refs": set(JS_IDENT.findall(clean))}
 
 
-# ---------------------------------------------------------------- build / load
 
 def build(root):
     files_list, skipped = walk_files(root)
@@ -311,8 +296,6 @@ def build(root):
     for rel, node in nodes.items():
         for d in node["defs"]:
             index[d["name"]].add(rel)
-    # Name-only edges need a distinctive name: a plain lowercase word (branches, locations)
-    # also appears in SQL strings, comments and prose, so it would create false links.
     usable = {
         n: fs for n, fs in index.items()
         if len(n) >= 4 and n not in COMMON_NAMES and not n.startswith("__")
@@ -407,7 +390,6 @@ class G:
         return {k: v for k, v in seen.items() if k not in seeds}
 
 
-# ---------------------------------------------------------------- commands
 
 def fmt_hits(hits, files, limit):
     lines = []
@@ -553,7 +535,7 @@ def cmd_symbol(gr, name, limit, as_json):
         if name in e["names"]:
             users.append((e["src"], e["dst"], e["kind"]))
         elif "*" in e["names"] and e["dst"] in defining:
-            users.append((e["src"], e["dst"], "ref"))  # namespace or star import: may use it
+            users.append((e["src"], e["dst"], "ref"))
     if as_json:
         print(json.dumps({"defined": [{"file": f, **d} for f, d in defs], "referenced_by": users}, indent=1))
         return

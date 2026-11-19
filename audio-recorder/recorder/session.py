@@ -1,4 +1,3 @@
-"""RecordingSession: capture two sources, align them, and build the final files."""
 
 import queue
 import threading
@@ -12,7 +11,6 @@ from .audio import LinearResampler, to_mono
 from .mixer import mix_wavs
 from .track import TrackWriter
 
-# mode -> (mic track name, loopback track name, keep the raw tracks by default)
 MODES = {
     "meeting": ("me", "others", True),
     "karaoke": ("voice", "music", False),
@@ -20,11 +18,6 @@ MODES = {
 
 
 def unique_dir(base, name):
-    """Return ``base/name``, or ``base/name_2``, ``_3``... if that folder is taken.
-
-    Recordings are named by minute, so two started in the same minute must not
-    overwrite each other.
-    """
     base = Path(base)
     candidate, n = base / name, 2
     while candidate.exists():
@@ -41,13 +34,6 @@ class SessionResult:
 
 
 class RecordingSession:
-    """Record a microphone source and a loopback (speakers) source together.
-
-    Sources only need ``name``, ``sample_rate``, ``start(callback)`` and
-    ``stop()``; ``callback(timestamp, samples)`` is called from the device
-    thread. Chunks go through a queue to one writer thread, so device callbacks
-    never block on disk I/O. All timestamps come from ``clock`` (monotonic).
-    """
 
     def __init__(self, out_dir, mic, loopback, mode="meeting", sample_rate=48000,
                  mic_gain=1.0, music_gain=1.0, keep_tracks=None, clock=time.monotonic):
@@ -120,7 +106,7 @@ class RecordingSession:
         for source in self._started:
             try:
                 source.stop()
-            except Exception:  # keep stopping the rest; the recording must still be saved
+            except Exception:
                 pass
         self._started = []
 
@@ -135,5 +121,5 @@ class RecordingSession:
                 if len(mono):
                     self.peaks[name] = float(np.max(np.abs(mono)))
                 self._writers[name].write(timestamp, self._resamplers[name].process(mono))
-            except Exception as exc:  # surfaced from stop()
+            except Exception as exc:
                 self.error = exc
