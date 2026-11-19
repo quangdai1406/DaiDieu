@@ -7,9 +7,9 @@ import pytest
 
 tk = pytest.importorskip("tkinter")
 
-from recorder.controller import AppController, ThreadRunner
-from recorder.gui import App
-from tests.fakes import FakeBackend, FakeClock
+from recorder.controller import AppController, ThreadRunner  # noqa: E402
+from recorder.gui import App  # noqa: E402
+from tests.fakes import FakeBackend, FakeClock  # noqa: E402
 
 RATE = 48000
 

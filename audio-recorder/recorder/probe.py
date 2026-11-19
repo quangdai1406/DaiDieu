@@ -1,4 +1,3 @@
-
 import sys
 
 
@@ -13,7 +12,7 @@ def main(argv=None):
         model = transcribe.load_model(model_name, device, None)
         segments, _info = model.transcribe(np.zeros(16000, dtype="float32"), language="en")
         list(segments)
-    except (Exception, SystemExit) as exc:
+    except (Exception, SystemExit) as exc:  # noqa: BLE001 - a plain reason beats a traceback here
         print(transcribe.explain_error(exc))
         return 1
     print("PROBE OK")

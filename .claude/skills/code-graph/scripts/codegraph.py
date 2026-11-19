@@ -9,7 +9,16 @@ import sys
 import time
 from collections import defaultdict, deque
 
-DESCRIPTION = 'Lightweight code graph for Claude Code: files, definitions, imports, references, tests.\n\nStandard library only. Static and approximate: Python is parsed with `ast`,\nJS/TS with regular expressions. Anything it cannot resolve is reported as external\nor unknown, never guessed.\n\nUsage: codegraph.py [--root DIR] [--rebuild] [--json] <command> ...\nCommands: build | summary | impact PATH | deps PATH | symbol NAME | tests-for PATH | changed\n'
+DOC_TEXT = """Lightweight code graph for Claude Code: files, definitions, imports, references, tests.
+
+Standard library only. Static and approximate: Python is parsed with `ast`,
+JS/TS with regular expressions. Anything it cannot resolve is reported as external
+or unknown, never guessed.
+
+Usage: codegraph.py [--root DIR] [--rebuild] [--json] <command> ...
+Commands: build | summary | impact PATH | deps PATH | symbol NAME | tests-for PATH | changed
+"""
+
 VERSION = 1
 SKIP_DIRS = {
     "node_modules", "venv", ".venv", "env", "__pycache__", "dist", "build", "out",
@@ -26,7 +35,6 @@ COMMON_NAMES = {
     "constructor", "render", "build", "load", "save", "parse", "format", "log", "next", "key",
 }
 TEST_DIRS = {"test", "tests", "__tests__", "spec", "specs"}
-
 
 
 def find_root(arg):
@@ -72,7 +80,6 @@ def is_test_path(rel):
         re.match(r"^test_.*\.py$", base) or re.match(r".*_test\.py$", base)
         or re.match(r".*\.(test|spec)\.[a-z]+$", base)
     )
-
 
 
 def find_py(files, parts):
@@ -169,7 +176,6 @@ def parse_python(rel, text, files):
     }
 
 
-
 JS_IMPORT_RES = [
     re.compile(r"""\bimport\s+(?:[\w*${}\s,]+?\s+from\s+)?['"]([^'"]+)['"]"""),
     re.compile(r"""\bexport\s+(?:\*|\{[^}]*\})\s*(?:as\s+\w+\s*)?from\s+['"]([^'"]+)['"]"""),
@@ -264,7 +270,6 @@ def parse_js(rel, text, files):
     return {"defs": uniq, "imports": sorted(imports), "external": sorted(external),
             "import_names": {k: sorted(v) for k, v in import_names.items()},
             "refs": set(JS_IDENT.findall(clean))}
-
 
 
 def build(root):
@@ -389,7 +394,6 @@ class G:
                     seen[nxt] = (d + 1, kind, (cur, e["names"]))
                     queue.append((nxt, d + 1, kind))
         return {k: v for k, v in seen.items() if k not in seeds}
-
 
 
 def fmt_hits(hits, files, limit):
@@ -569,7 +573,7 @@ def git_changed(root, base):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=DESCRIPTION, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=DOC_TEXT, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root")
     ap.add_argument("--rebuild", action="store_true", help="rebuild the graph before answering")
     ap.add_argument("--json", action="store_true")

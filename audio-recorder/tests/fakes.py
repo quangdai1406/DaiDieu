@@ -1,7 +1,4 @@
-
-
 class FakeSource:
-
     def __init__(self, name, sample_rate, fail_on_start=False):
         self.name = name
         self.sample_rate = sample_rate
@@ -32,7 +29,6 @@ class FakeClock:
 
 
 class FakeBackend:
-
     def __init__(self, rate=8000):
         self.mic = FakeSource("mic", rate)
         self.loopback = FakeSource("loopback", rate)
@@ -53,18 +49,16 @@ class FakeBackend:
 
 
 class SyncRunner:
-
     def submit(self, work, done):
         try:
             result = work()
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001 - mirrors ThreadRunner
             done(None, exc)
         else:
             done(result, None)
 
 
 class ManualRunner:
-
     def __init__(self):
         self.pending = []
 
@@ -76,7 +70,7 @@ class ManualRunner:
         for work, done in pending:
             try:
                 result = work()
-            except BaseException as exc:
+            except BaseException as exc:  # noqa: BLE001
                 done(None, exc)
             else:
                 done(result, None)

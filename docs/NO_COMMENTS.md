@@ -8,9 +8,16 @@ Rule: code has no comments or docstrings, in every repo, old and new.
 - `python tools/nocomments.py check --staged` checks what is staged. The pre-commit hook runs it.
 - Once per clone: `git config core.hooksPath .githooks`.
 - CI: `.github/workflows/nocomments.yml`.
-- Covered: `.py .js .css .scss .html .htm .xml .yml .yaml .ps1`, plus Liquid `{% comment %}`.
-- Skipped: `.git _site .sass-cache wp-content wp-includes node_modules *.min.js *.min.css *~ *.scssc`.
-- Kept on purpose: shebang, Python encoding line, IE conditional comments.
+- Covered: `.py .js .jsx .mjs .cjs .ts .tsx .css .scss .html .htm .xml .yml .yaml .ps1 .sql .toml .sh .bash .bat .cmd .rules`, plus Liquid `{% comment %}`.
+- Skipped by default: `.git _site .sass-cache wp-content wp-includes node_modules vendor third_party bower_components dist .next coverage .venv venv __pycache__ *.min.js *.min.css *.umd.js *.bundle.js *.chunk.js *~ *.scssc`.
+- Per-repo exclusions: list glob patterns, one per line, in `.nocommentsignore` (a trailing `/` matches a directory).
+- Kept on purpose: shebang, Python encoding line, IE conditional comments, legal comments (`/*!`, `@license`, `@preserve`), and tooling directives that linters and type checkers read (`# noqa`, `# type:`, `# pragma:`, `# fmt:`, `# nosec`, `// @ts-ignore`, `// eslint-disable`, `# shellcheck`, `# yamllint` and similar).
+- Python: a docstring-only body becomes `pass`. Code that reads the module `__doc__` gets the text moved to a `DOC_TEXT` constant. Code that reads `__doc__` on a function or class makes `strip` report an error and leave the file alone.
+- After removing a comment or docstring the tool also tidies blank lines so formatter checks keep passing.
+- The copy of `tools/nocomments.py` in other repos starts with `# ruff: noqa` and `# fmt: off` so their linters and formatters skip it.
+- Generated docs that record line numbers or docstrings (for example a code index) must be regenerated after a strip.
+- JSX comments `{/* ... */}` leave an empty `{}` (valid).
+- Not covered: `.md .ipynb .txt .json .gitignore`, and languages not listed above.
 
 ## Another existing repo
 1. Clone it next to this one.
@@ -19,7 +26,7 @@ Rule: code has no comments or docstrings, in every repo, old and new.
 
 The script copies the tool, hook and CI workflow, adds the rule to the repo's `CLAUDE.md`, sets `core.hooksPath`, strips, then checks. Safe to run twice.
 
-Checks to run for every repo after stripping: its own test suite, compile or build step, and `git diff` for anything that is not a comment. Languages the tool does not cover (for example TypeScript, C, SQL) still hold comments: `check` will not see them.
+Checks to run for every repo after stripping: its own test suite, compile or build step, and `git diff` for anything that is not a comment. Languages the tool does not cover (for example C, Java, Go) still hold comments: `check` will not see them.
 
 ## Every future repo and every Claude session
 Add this line to `~/.claude/CLAUDE.md` on your own machine (it applies to all repos):

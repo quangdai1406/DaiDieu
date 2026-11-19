@@ -65,11 +65,126 @@ def test_idempotent():
     assert strip_python(once) == once
 
 
-def test_doc_reference_raises():
+def test_module_doc_reader_moved_to_constant():
+    src = '"""usage text"""\nimport argparse\nargparse.ArgumentParser(description=__doc__)\n'
+    assert strip_python(src) == 'import argparse\n\nDOC_TEXT = """usage text"""\n\nargparse.ArgumentParser(description=DOC_TEXT)\n'
+
+
+def test_module_doc_reader_after_future_import():
+    src = '"""u"""\nfrom __future__ import annotations\nprint(__doc__)\n'
+    assert strip_python(src) == 'from __future__ import annotations\n\nDOC_TEXT = """u"""\n\nprint(DOC_TEXT)\n'
+
+
+def test_module_doc_reader_multiline_and_function_scope():
+    src = '#!/usr/bin/env python3\n"""line one\n\nline two"""\n\n\ndef f():\n    return __doc__\n'
+    assert strip_python(src) == '#!/usr/bin/env python3\nDOC_TEXT = """line one\n\nline two"""\n\n\ndef f():\n    return DOC_TEXT\n'
+
+
+def test_attribute_doc_reader_raises():
     with pytest.raises(ValueError):
-        strip_python('"""usage"""\nimport argparse\nargparse.ArgumentParser(description=__doc__)\n')
+        strip_python('def f():\n    """d"""\n\n\nprint(f.__doc__)\n')
 
 
-def test_doc_reference_without_docstring_allowed():
+def test_doc_reader_without_docstring_allowed():
     src = "x = __doc__\n"
     assert strip_python(src) == src
+
+
+def test_doc_text_name_clash_raises():
+    with pytest.raises(ValueError):
+        strip_python('"""u"""\nDOC_TEXT = 1\nprint(__doc__)\n')
+
+
+def test_docstring_only_bodies_become_pass():
+    src = 'class E(Exception):\n    """doc"""\n\n\ndef f():\n    """d"""\n\n\nx = 1\n'
+    assert strip_python(src) == "class E(Exception):\n    pass\n\n\ndef f():\n    pass\n\n\nx = 1\n"
+
+
+def test_docstring_only_module_becomes_empty():
+    assert strip_python('"""only"""\n') == ""
+
+
+def test_inline_docstring_raises():
+    with pytest.raises(ValueError):
+        strip_python('def f(): """d"""\n')
+
+
+def test_tooling_directives_kept():
+    src = (
+        "import random\n"
+        "rng = random.Random(1)  # noqa: S311\n"
+        "x = foo()  # type: ignore[attr]\n"
+        "y = bar()  # prose here\n"
+        "# fmt: off\n"
+        "z = [1,2]\n"
+        "# fmt: on\n"
+        "# prose line\n"
+        "if z:  # pragma: no cover\n"
+        "    pass\n"
+        "w = 1  # nosec B101\n"
+        "v = 2  # pylint: disable=invalid-name\n"
+    )
+    assert strip_python(src) == (
+        "import random\n"
+        "rng = random.Random(1)  # noqa: S311\n"
+        "x = foo()  # type: ignore[attr]\n"
+        "y = bar()\n"
+        "# fmt: off\n"
+        "z = [1,2]\n"
+        "# fmt: on\n"
+        "if z:  # pragma: no cover\n"
+        "    pass\n"
+        "w = 1  # nosec B101\n"
+        "v = 2  # pylint: disable=invalid-name\n"
+    )
+
+
+def test_directives_not_reported():
+    assert find_python("x = 1  # noqa\ny = 2  # c\n") == [2]
+
+
+def test_doc_text_placed_after_imports():
+    src = '"""usage"""\nimport argparse\nfrom pathlib import Path\n\nCOUNTS = (1, 2)\n\n\ndef main():\n    return __doc__\n'
+    assert strip_python(src) == (
+        'import argparse\nfrom pathlib import Path\n\nDOC_TEXT = """usage"""\n\nCOUNTS = (1, 2)\n\n\ndef main():\n    return DOC_TEXT\n'
+    )
+
+
+def test_doc_text_after_future_and_imports():
+    src = '"""u"""\nfrom __future__ import annotations\n\nimport os\n\nprint(__doc__)\n'
+    assert strip_python(src) == 'from __future__ import annotations\n\nimport os\n\nDOC_TEXT = """u"""\n\nprint(DOC_TEXT)\n'
+
+
+def test_doc_reader_after_first_import_run():
+    src = '"""u"""\nimport os\nx = __doc__\nimport sys\n'
+    assert strip_python(src) == 'import os\n\nDOC_TEXT = """u"""\n\nx = DOC_TEXT\nimport sys\n'
+
+
+def test_doc_text_with_no_imports_stays_in_place():
+    assert strip_python('"""u"""\nprint(__doc__)\n') == 'DOC_TEXT = """u"""\nprint(DOC_TEXT)\n'
+
+
+def test_leading_blank_after_module_docstring_removed():
+    assert strip_python('"""d"""\n\nimport os\n') == "import os\n"
+
+
+def test_blank_runs_not_doubled_at_top_level():
+    src = "def a():\n    pass\n\n\n# c\n\n\ndef b():\n    pass\n"
+    assert strip_python(src) == "def a():\n    pass\n\n\ndef b():\n    pass\n"
+
+
+def test_blank_runs_not_doubled_in_function():
+    src = "def f():\n    x = 1\n\n    # c\n\n    y = 2\n"
+    assert strip_python(src) == "def f():\n    x = 1\n\n    y = 2\n"
+
+
+def test_blank_after_class_docstring_removed():
+    assert strip_python('class A:\n    """d"""\n\n    x = 1\n') == "class A:\n    x = 1\n"
+
+
+def test_trailing_comment_at_end_of_file():
+    assert strip_python("x = 1\n\n# end\n") == "x = 1\n"
+
+
+def test_comment_without_blank_neighbours_leaves_no_gap():
+    assert strip_python("x = 1\n# c\ndef f():\n    pass\n") == "x = 1\ndef f():\n    pass\n"

@@ -1,4 +1,3 @@
-
 import queue
 import shutil
 import threading
@@ -48,7 +47,6 @@ class Snapshot:
 
 
 class ThreadRunner:
-
     def __init__(self):
         self._finished = queue.Queue()
 
@@ -56,7 +54,7 @@ class ThreadRunner:
         def run():
             try:
                 result = work()
-            except BaseException as exc:
+            except BaseException as exc:  # noqa: BLE001 - includes SystemExit from load_model
                 self._finished.put((done, None, exc))
             else:
                 self._finished.put((done, result, None))
@@ -99,7 +97,6 @@ class AppController:
         self._progress = None
         self._progress_started = 0.0
         self._message, self._kind = "Ready. Press Record to start.", "info"
-
 
     def snapshot(self):
         recording = self._state is State.RECORDING
@@ -146,7 +143,6 @@ class AppController:
     def _say(self, text, kind="info"):
         self._message, self._kind = text, kind
 
-
     def record(self):
         if self._state not in (State.IDLE, State.STOPPED):
             return False
@@ -156,11 +152,11 @@ class AppController:
             session_dir = unique_dir(self._out_base, f"{self._now():%y_%m%d_%H%M}_meeting")
             session = RecordingSession(session_dir, *sources, mode="meeting", clock=self._clock)
             session.start()
-        except (Exception, SystemExit) as exc:
+        except (Exception, SystemExit) as exc:  # noqa: BLE001 - shown in plain words
             for source in sources or ():
                 try:
                     source.stop()
-                except Exception:
+                except Exception:  # noqa: BLE001
                     pass
             self._say(str(exc) if isinstance(exc, SystemExit) else f"Could not start recording: {exc}",
                       "error")
@@ -297,6 +293,6 @@ class AppController:
         if self._state is State.RECORDING and self._session is not None:
             try:
                 self._session.stop()
-            except Exception:
+            except Exception:  # noqa: BLE001 - the window is closing anyway
                 pass
             self._state = State.STOPPED

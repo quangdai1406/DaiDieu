@@ -7,9 +7,9 @@ prepare_streams()
 
 try:
     faulthandler.enable()
-except Exception:
+except Exception:  # noqa: BLE001 - nothing to write to
     pass
 
-from .cli import main
+from .cli import main  # noqa: E402
 
 sys.exit(main())

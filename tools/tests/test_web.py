@@ -118,3 +118,8 @@ def test_js_regex_after_if_paren():
 def test_js_nested_template_literal():
     src = "var s = `a ${ `// x` } b`; // z\nf();\nvar t = `${ '`' + \"}\" } //y`; // w\n"
     assert strip_c_like(src, line_comments=True, regex=True) == "var s = `a ${ `// x` } b`;\nf();\nvar t = `${ '`' + \"}\" } //y`;\n"
+
+
+def test_blank_runs_collapse_after_block_comment_removal():
+    src = "a;\n\n/* c */\n\nb;\n"
+    assert strip_c_like(src, line_comments=True) == "a;\n\nb;\n"

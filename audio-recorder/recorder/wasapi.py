@@ -1,4 +1,3 @@
-
 import time
 
 import numpy as np
@@ -18,7 +17,6 @@ def int16_to_float(buffer, channels):
 
 
 class WasapiSource:
-
     def __init__(self, name, device_index=None, loopback=False, pyaudio=None,
                  clock=time.monotonic, frames_per_buffer=1024):
         self.name = name

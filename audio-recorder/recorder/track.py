@@ -1,4 +1,3 @@
-
 import threading
 
 import numpy as np
@@ -6,7 +5,6 @@ import soundfile as sf
 
 
 class TrackWriter:
-
     def __init__(self, path, sample_rate, t0, tolerance=0.05, flush_seconds=2.0):
         self.path = path
         self.sample_rate = int(sample_rate)
