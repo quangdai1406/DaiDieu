@@ -172,7 +172,8 @@ def strip_c_like(src, line_comments, regex=False):
 
 
 _HTML = re.compile(
-    r"<!--(?!\[if)(?!<!\[endif).*?-->"
+    r"(?P<keep><!--\[if\b[^\]]*\]>(?:<!-->|.*?<!\[endif\]-->)|<!--<!\[endif\]-->)"
+    r"|<!--.*?-->"
     r"|\{%-?\s*comment\s*-?%\}.*?\{%-?\s*endcomment\s*-?%\}"
     r"|(?P<so><script\b[^>]*>)(?P<sb>.*?)(?P<sc></script\s*>)"
     r"|(?P<to><style\b[^>]*>)(?P<tb>.*?)(?P<tc></style\s*>)",
@@ -194,7 +195,9 @@ def strip_html(src):
     for match in _HTML.finditer(src):
         emit(src[pos:match.start()])
         pos = match.end()
-        if match.group("so"):
+        if match.group("keep"):
+            emit(match.group("keep"))
+        elif match.group("so"):
             head = match.group("so")
             body = match.group("sb")
             if "json" not in head.lower() and "template" not in head.lower():

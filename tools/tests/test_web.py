@@ -87,3 +87,14 @@ def test_idempotent():
     ]:
         once = strip_text(name, src)
         assert strip_text(name, once) == once
+
+
+def test_html_ie_conditional_kept():
+    src = (
+        '<!--[if IE 8]><html class="ie8"><![endif]-->\n'
+        "<!--[if !(IE 7) | !(IE 8)  ]><!-->\n"
+        '<html lang="en">\n'
+        "<!--<![endif]-->\n"
+        "<p>x</p><!-- c -->\n"
+    )
+    assert strip_html(src) == src.replace("<!-- c -->", "")
