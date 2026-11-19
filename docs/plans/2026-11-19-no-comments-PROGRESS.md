@@ -18,3 +18,4 @@
 - Task 4 bug found in review: IE conditional comment swallowed markup. Root cause regex; fixed with test_html_ie_conditional_kept. Also removed accidentally tracked pycache and added .gitignore.
 - Assumption: .claude/skills/code-graph/scripts/codegraph.py is repo code and was stripped too (confidence 0.8, reversible via git).
 - Task 6: bootstrap script and tests done. Global rule appended to ~/.claude/CLAUDE.md in this container only (file did not exist). Template repo skipped (needs user OK). Other repos instructions_only; no add_repo.
+- Final step: code graph built (35 files, 42 edges), docs/CODE_INDEX.md written and verified against ast (0 problems). Sonnet checker round pending.
