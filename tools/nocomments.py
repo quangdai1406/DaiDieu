@@ -23,7 +23,12 @@ def _python_targets(src):
             continue
         cuts[row] = col
     docs = []
+    uses_doc = False
     for node in ast.walk(ast.parse(src)):
+        if (isinstance(node, ast.Name) and node.id == "__doc__") or (
+            isinstance(node, ast.Attribute) and node.attr == "__doc__"
+        ):
+            uses_doc = True
         if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             first = node.body[0] if node.body else None
             if (
@@ -32,20 +37,22 @@ def _python_targets(src):
                 and isinstance(first.value.value, str)
             ):
                 docs.append((first.lineno, first.end_lineno))
-    return lines, cuts, docs
+    return lines, cuts, docs, uses_doc
 
 
 def find_python(src):
-    _, cuts, docs = _python_targets(src)
+    _, cuts, docs, _ = _python_targets(src)
     found = set(cuts) | {start for start, _ in docs}
     return sorted(found)
 
 
 def strip_python(src):
     try:
-        lines, cuts, docs = _python_targets(src)
+        lines, cuts, docs, uses_doc = _python_targets(src)
     except (SyntaxError, tokenize.TokenError) as exc:
         raise ValueError(f"cannot parse python: {exc}") from exc
+    if docs and uses_doc:
+        raise ValueError("code reads __doc__: move the text into a string constant first")
     dropped = set()
     for start, end in docs:
         dropped.update(range(start, end + 1))
@@ -69,6 +76,7 @@ def strip_python(src):
 
 
 _REGEX_PREV = set("(,=:[!&|?{;+-*%<>~^")
+_COND_WORDS = {"if", "while", "for", "with"}
 _REGEX_WORDS = {"return", "typeof", "case", "in", "of", "delete", "void", "throw", "new", "else", "do"}
 
 
@@ -92,6 +100,8 @@ def strip_c_like(src, line_comments, regex=False):
     newlines = 0
     prev = ""
     word = ""
+    parens = []
+    after_cond = False
     i = 0
     n = len(src)
 
@@ -140,7 +150,9 @@ def strip_c_like(src, line_comments, regex=False):
                 i = end
                 prev, word = ")", ""
                 continue
-        if regex and c == "/" and (prev == "" or prev in _REGEX_PREV or word in _REGEX_WORDS):
+        if regex and c == "/" and (
+            prev == "" or prev in _REGEX_PREV or word in _REGEX_WORDS or (prev == ")" and after_cond)
+        ):
             j = i + 1
             in_class = False
             while j < n and src[j] != "\n":
@@ -167,16 +179,21 @@ def strip_c_like(src, line_comments, regex=False):
             word += c
             prev = c
         elif not c.isspace():
+            if c == "(":
+                parens.append(word)
+            elif c == ")":
+                after_cond = (parens.pop() if parens else "") in _COND_WORDS
             prev, word = c, ""
     return _tidy("".join(out), touched)
 
 
 _HTML = re.compile(
-    r"(?P<keep><!--\[if\b[^\]]*\]>(?:<!-->|.*?<!\[endif\]-->)|<!--<!\[endif\]-->)"
+    r"(?P<keep><!--\[if\b[^\]]*\]>(?:<!-->|.*?<!\[endif\]-->)|<!--<!\[endif\]-->|<!\[CDATA\[.*?\]\]>)"
     r"|<!--.*?-->"
     r"|\{%-?\s*comment\s*-?%\}.*?\{%-?\s*endcomment\s*-?%\}"
     r"|(?P<so><script\b[^>]*>)(?P<sb>.*?)(?P<sc></script\s*>)"
-    r"|(?P<to><style\b[^>]*>)(?P<tb>.*?)(?P<tc></style\s*>)",
+    r"|(?P<to><style\b[^>]*>)(?P<tb>.*?)(?P<tc></style\s*>)"
+    r"|(?P<tag><[A-Za-z][^\s/>]*(?:\"[^\"]*\"|'[^']*'|[^'\">])*>)",
     re.S | re.I,
 )
 
@@ -197,6 +214,8 @@ def strip_html(src):
         pos = match.end()
         if match.group("keep"):
             emit(match.group("keep"))
+        elif match.group("tag"):
+            emit(match.group("tag"))
         elif match.group("so"):
             head = match.group("so")
             body = match.group("sb")
@@ -219,9 +238,15 @@ def strip_hash(src, kind="yaml"):
     out = []
     in_block = False
     literal_indent = None
+    here = None
     for number, line in enumerate(io.StringIO(src).readlines(), start=1):
         body = line.rstrip("\r\n")
         eol = line[len(body):]
+        if here is not None:
+            out.append(line)
+            if body.startswith(here):
+                here = None
+            continue
         if literal_indent is not None:
             indent = len(body) - len(body.lstrip())
             if not body.strip() or indent > literal_indent:
@@ -245,6 +270,9 @@ def strip_hash(src, kind="yaml"):
                     j += 1
                 elif c == quote:
                     quote = None
+            elif kind == "ps1" and c == "@" and body[j + 1:j + 2] in ("'", '"') and not body[j + 2:].strip():
+                here = body[j + 1] + "@"
+                break
             elif c in "'\"":
                 before = body[:j].rstrip()[-1:]
                 if kind != "yaml" or before == "" or before in ":-,[{":

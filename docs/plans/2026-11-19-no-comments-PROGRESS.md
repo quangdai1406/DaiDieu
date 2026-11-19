@@ -19,3 +19,5 @@
 - Assumption: .claude/skills/code-graph/scripts/codegraph.py is repo code and was stripped too (confidence 0.8, reversible via git).
 - Task 6: bootstrap script and tests done. Global rule appended to ~/.claude/CLAUDE.md in this container only (file did not exist). Template repo skipped (needs user OK). Other repos instructions_only; no add_repo.
 - Final step: code graph built (35 files, 42 edges), docs/CODE_INDEX.md written and verified against ast (0 problems). Sonnet checker round pending.
+- Sonnet checker round 1: FAIL on 4 points, all verified real and fixed. (1) cli.py and codegraph.py passed __doc__ to argparse, so --help lost its text: restored as DESCRIPTION constants, --help output identical to original; tool now raises ValueError when code reads __doc__. (2) ps1 here-strings, (3) html CDATA and attribute values, (4) JS regex after if/while/for paren: fixed with tests. Tools tests 46 passed, audio-recorder 128 passed 1 skipped, check exit 0, strip idempotent.
+- Lesson: AST equality ignoring docstrings hides __doc__ readers. Scan for __doc__ before stripping docstrings.

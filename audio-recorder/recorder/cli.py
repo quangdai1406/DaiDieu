@@ -10,12 +10,14 @@ from .session import MODES, RecordingSession, unique_dir
 from .transcribe import (GPU_HINT, SPEAKERS, explain_error, format_clock, load_model, transcribe_file,
                          write_transcripts)
 
+DESCRIPTION = "Command line interface: ``python -m recorder devices | record | transcribe``."
+
 CONSENT = ("Reminder: tell the other participants you are recording. Many places "
            "require everyone's consent.")
 
 
 def build_parser():
-    p = argparse.ArgumentParser(prog="recorder", description=__doc__)
+    p = argparse.ArgumentParser(prog="recorder", description=DESCRIPTION)
     sub = p.add_subparsers(dest="command", required=True)
 
     sub.add_parser("devices", help="list microphones and loopback (speaker) devices")

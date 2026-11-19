@@ -63,3 +63,13 @@ def test_idempotent():
     src = "x = 1  # c\n"
     once = strip_python(src)
     assert strip_python(once) == once
+
+
+def test_doc_reference_raises():
+    with pytest.raises(ValueError):
+        strip_python('"""usage"""\nimport argparse\nargparse.ArgumentParser(description=__doc__)\n')
+
+
+def test_doc_reference_without_docstring_allowed():
+    src = "x = __doc__\n"
+    assert strip_python(src) == src

@@ -9,6 +9,7 @@ import sys
 import time
 from collections import defaultdict, deque
 
+DESCRIPTION = 'Lightweight code graph for Claude Code: files, definitions, imports, references, tests.\n\nStandard library only. Static and approximate: Python is parsed with `ast`,\nJS/TS with regular expressions. Anything it cannot resolve is reported as external\nor unknown, never guessed.\n\nUsage: codegraph.py [--root DIR] [--rebuild] [--json] <command> ...\nCommands: build | summary | impact PATH | deps PATH | symbol NAME | tests-for PATH | changed\n'
 VERSION = 1
 SKIP_DIRS = {
     "node_modules", "venv", ".venv", "env", "__pycache__", "dist", "build", "out",
@@ -568,7 +569,7 @@ def git_changed(root, base):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=DESCRIPTION, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root")
     ap.add_argument("--rebuild", action="store_true", help="rebuild the graph before answering")
     ap.add_argument("--json", action="store_true")

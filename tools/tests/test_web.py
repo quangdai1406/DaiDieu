@@ -98,3 +98,18 @@ def test_html_ie_conditional_kept():
         "<p>x</p><!-- c -->\n"
     )
     assert strip_html(src) == src.replace("<!-- c -->", "")
+
+
+def test_ps1_here_string_untouched():
+    src = '$d = @"\n# inside\n"@\n# c\n$e = @\'\n# in2\n\'@\n'
+    assert strip_text("a.ps1", src) == '$d = @"\n# inside\n"@\n$e = @\'\n# in2\n\'@\n'
+
+
+def test_html_cdata_and_attribute_untouched():
+    src = '<a title="<!-- x -->">t</a><![CDATA[ <!-- keep --> ]]><!-- gone -->\n'
+    assert strip_html(src) == '<a title="<!-- x -->">t</a><![CDATA[ <!-- keep --> ]]>\n'
+
+
+def test_js_regex_after_if_paren():
+    src = "if (a) /re\\//.test(b); // c\nvar x = (a) / 2; // d\n"
+    assert strip_c_like(src, line_comments=True, regex=True) == "if (a) /re\\//.test(b);\nvar x = (a) / 2;\n"
