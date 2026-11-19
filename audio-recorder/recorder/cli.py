@@ -10,14 +10,14 @@ from .session import MODES, RecordingSession, unique_dir
 from .transcribe import (GPU_HINT, SPEAKERS, explain_error, format_clock, load_model, transcribe_file,
                          write_transcripts)
 
-DESCRIPTION = "Command line interface: ``python -m recorder devices | record | transcribe``."
+DOC_TEXT = """Command line interface: ``python -m recorder devices | record | transcribe``."""
 
 CONSENT = ("Reminder: tell the other participants you are recording. Many places "
            "require everyone's consent.")
 
 
 def build_parser():
-    p = argparse.ArgumentParser(prog="recorder", description=DESCRIPTION)
+    p = argparse.ArgumentParser(prog="recorder", description=DOC_TEXT)
     sub = p.add_subparsers(dest="command", required=True)
 
     sub.add_parser("devices", help="list microphones and loopback (speaker) devices")
@@ -121,7 +121,7 @@ def run_transcribe(target, args, model_loader):
         else:
             txt, srt = transcribe_file(model, target, args.language, progress)
         progress.finish()
-    except (Exception, SystemExit) as exc:
+    except (Exception, SystemExit) as exc:  # noqa: BLE001 - always say what went wrong
         print(explain_error(exc))
         return 1
     print(f"Transcript: {txt}\nSubtitles:  {srt}")

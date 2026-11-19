@@ -57,7 +57,7 @@ class SyncRunner:
     def submit(self, work, done):
         try:
             result = work()
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001 - mirrors ThreadRunner
             done(None, exc)
         else:
             done(result, None)
@@ -76,7 +76,7 @@ class ManualRunner:
         for work, done in pending:
             try:
                 result = work()
-            except BaseException as exc:
+            except BaseException as exc:  # noqa: BLE001
                 done(None, exc)
             else:
                 done(result, None)
