@@ -2,20 +2,20 @@
 
 - [x] R1 Extend tool | done | 2026-11-19
 - [x] R2 Verification helpers | done | 2026-11-19
-- [ ] R3 markdown-to-pdf-editor | todo | 2026-11-19
-- [ ] R4 aisi_mes | todo | 2026-11-19
-- [ ] R5 daikon | todo | 2026-11-19
-- [ ] R6 photo2step | todo | 2026-11-19
-- [ ] R7 kdp-book-pipeline | todo | 2026-11-19
-- [ ] R8 0dte-spy | todo | 2026-11-19
-- [ ] R9 inspect-pro | todo | 2026-11-19
-- [ ] R10 daikonai | todo | 2026-11-19
-- [ ] R11 design-os | todo | 2026-11-19
-- [ ] R12 vision-station | todo | 2026-11-19
-- [ ] R13 eme121_spring2016 | todo | 2026-11-19
-- [ ] R14 quangdai1406.github.io | todo | 2026-11-19
-- [ ] R15 daitran | todo | 2026-11-19
-- [ ] R16 Tool PR | todo | 2026-11-19
+- [x] R3 markdown-to-pdf-editor | done | 2026-11-19
+- [x] R4 aisi_mes | done | 2026-11-19
+- [x] R5 daikon | done | 2026-11-19
+- [x] R6 photo2step | done | 2026-11-19
+- [x] R7 kdp-book-pipeline | done | 2026-11-19
+- [x] R8 0dte-spy | done | 2026-11-19
+- [x] R9 inspect-pro | done | 2026-11-19
+- [x] R10 daikonai | done | 2026-11-19
+- [x] R11 design-os | done | 2026-11-19
+- [x] R12 vision-station | done | 2026-11-19
+- [x] R13 eme121_spring2016 | done | 2026-11-19
+- [x] R14 quangdai1406.github.io | done | 2026-11-19
+- [x] R15 daitran | done | 2026-11-19
+- [x] R16 Tool PR | done | 2026-11-19
 
 ## Notes
 - Assumption: all 13 repos, user did not narrow the list. Forks and 2016 repos included, each as a draft PR.
@@ -24,3 +24,9 @@
 - Not covered by design: .md, .ipynb, .txt, .gitignore, .json.
 - R1: tool now covers ts tsx jsx mjs cjs rules sql toml sh bash bat cmd. 65 tools tests pass. JSX comment {/* c */} leaves {} (valid, compiles identically); removing the braces is unsafe in plain TS.
 - R2: verifier (scratch, not committed): /tmp/claude-0/verify_repo.py REPO BASE. TS/JS by typescript transpile removeComments equality, SQL by pglast AST (function bodies masked, plpgsql compared), TOML tomllib, YAML safe_load, HTML parser events, Python AST, sh bash -n. Self-test on DaiDieu and a synthetic repo passed.
+- Rollout done: 13 draft PRs on branch no-comments. Docs-only repos (0DTE-SPY, DaikonAI, design-os, DaiTran) got tool, hook, CI and rule only.
+- Verified per repo with verify_repo.py: AST (py), compiler output (ts js tsx), pglast (sql), tomllib, yaml.safe_load, html.parser, bash -n. 0 bad after fixes.
+- Tool fixes found during rollout: docstring-only bodies to pass, __doc__ readers to DOC_TEXT, inline docstring raises, legal comments kept, vendored defaults and .nocommentsignore, UTF-16 support, JSX closing tag read as regex, verifier false alarms (position offsets).
+- Not run: full test suites for daikon, vision-station, aisi_mes, inspect-pro (deps), photo2step (cut off at 280s, identical progress), no site builds. User asked to go faster, so skipped.
+- Needs review: AISI_MES edits already-applied SQL migrations (comment lines only). GitHub Pages repos (EME121_Spring2016, quangdai1406.github.io) publish on merge.
+- Template repo skipped (needs user OK).
