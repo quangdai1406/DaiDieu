@@ -5,7 +5,7 @@
 - [x] Task 3 CLI strip/check | done | 2026-11-19
 - [x] Task 4 Apply to this repo | done | 2026-11-19
 - [x] Task 5 Enforcement (hook, CI, CLAUDE.md) | done | 2026-11-19
-- [ ] Task 6 Other repos + future repos | doing | 2026-11-19
+- [x] Task 6 Other repos + future repos | done | 2026-11-19
 
 ## Notes
 - Assumption: docstrings and tooling directives count as comments and are removed.
@@ -17,3 +17,4 @@
 - Task 4: 287 comment lines in 40 files before, 0 after. Verified: AST equal (23 .py, docstrings ignored), html.parser events equal (7 html/htm/xml), libsass compressed css equal (4 scss), yaml.safe_load equal, ps1 only header comments removed, compileall ok, audio-recorder 128 passed 1 skipped, tools 34 passed. jekyll not available.
 - Task 4 bug found in review: IE conditional comment swallowed markup. Root cause regex; fixed with test_html_ie_conditional_kept. Also removed accidentally tracked pycache and added .gitignore.
 - Assumption: .claude/skills/code-graph/scripts/codegraph.py is repo code and was stripped too (confidence 0.8, reversible via git).
+- Task 6: bootstrap script and tests done. Global rule appended to ~/.claude/CLAUDE.md in this container only (file did not exist). Template repo skipped (needs user OK). Other repos instructions_only; no add_repo.
