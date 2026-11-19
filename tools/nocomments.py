@@ -77,7 +77,7 @@ def strip_python(src):
 
 _REGEX_PREV = set("(,=:[!&|?{;+-*%<>~^")
 _COND_WORDS = {"if", "while", "for", "with"}
-_REGEX_WORDS = {"return", "typeof", "case", "in", "of", "delete", "void", "throw", "new", "else", "do"}
+_REGEX_WORDS = {"return", "typeof", "case", "in", "of", "delete", "void", "throw", "new", "else", "do", "await", "yield", "instanceof"}
 
 
 def _tidy(text, touched):
@@ -194,7 +194,7 @@ def strip_c_like(src, line_comments, regex=False):
                 i = end
                 prev, word = ")", ""
                 continue
-        if regex and c == "/" and (
+        if regex and c == "/" and src[i - 1:i] != "<" and (
             prev == "" or prev in _REGEX_PREV or word in _REGEX_WORDS or (prev == ")" and after_cond)
         ):
             j = i + 1
@@ -275,10 +275,22 @@ def strip_html(src):
 
 
 _LITERAL_START = re.compile(r"[:-]\s+[|>][+-]?\d*\s*$")
+_SH_HEREDOC = re.compile(r"<<(-?)\s*(['\"]?)([A-Za-z_]\w*)\2")
+
+
+def _here_ended(here, body):
+    mode, text = here
+    if mode == "start":
+        return body.startswith(text)
+    if mode == "contains":
+        return text in body
+    if mode == "strip":
+        return body.strip() == text
+    return body == text
 
 
 def strip_hash(src, kind="yaml"):
-    escape = "\\" if kind == "yaml" else "`"
+    escape = "`" if kind == "ps1" else "\\"
     out = []
     in_block = False
     literal_indent = None
@@ -288,7 +300,7 @@ def strip_hash(src, kind="yaml"):
         eol = line[len(body):]
         if here is not None:
             out.append(line)
-            if body.startswith(here):
+            if _here_ended(here, body):
                 here = None
             continue
         if literal_indent is not None:
@@ -305,6 +317,7 @@ def strip_hash(src, kind="yaml"):
             body = body[end + 2:]
             in_block = False
             changed = True
+        pending = None
         quote = None
         j = 0
         while j < len(body):
@@ -315,8 +328,22 @@ def strip_hash(src, kind="yaml"):
                 elif c == quote:
                     quote = None
             elif kind == "ps1" and c == "@" and body[j + 1:j + 2] in ("'", '"') and not body[j + 2:].strip():
-                here = body[j + 1] + "@"
+                here = ("start", body[j + 1] + "@")
                 break
+            elif kind == "toml" and body[j:j + 3] in ('"' * 3, "'" * 3):
+                delim = body[j:j + 3]
+                end = body.find(delim, j + 3)
+                if end < 0:
+                    here = ("contains", delim)
+                    break
+                j = end + 2
+            elif kind == "sh" and body[j:j + 2] == "<<" and body[j:j + 3] != "<<<":
+                match = _SH_HEREDOC.match(body, j)
+                if match:
+                    pending = ("strip" if match.group(1) else "exact", match.group(3))
+                    j = match.end() - 1
+            elif kind == "sh" and c == "\\":
+                j += 1
             elif c in "'\"":
                 before = body[:j].rstrip()[-1:]
                 if kind != "yaml" or before == "" or before in ":-,[{":
@@ -336,10 +363,15 @@ def strip_hash(src, kind="yaml"):
                 if kind == "yaml" and j > 0 and body[j - 1] not in " \t":
                     j += 1
                     continue
+                if kind == "sh" and j > 0 and body[j - 1] not in " \t;&|(":
+                    j += 1
+                    continue
                 body = body[:j]
                 changed = True
                 break
             j += 1
+        if pending is not None:
+            here = pending
         if changed:
             body = body.rstrip(" \t")
             if not body:
@@ -350,12 +382,101 @@ def strip_hash(src, kind="yaml"):
     return "".join(out)
 
 
+_DOLLAR = re.compile(r"\$([A-Za-z_]\w*)?\$")
+
+
+def strip_sql(src):
+    out = []
+    touched = set()
+    newlines = 0
+    i = 0
+    n = len(src)
+
+    def emit(text):
+        nonlocal newlines
+        out.append(text)
+        newlines += text.count("\n")
+
+    while i < n:
+        c = src[i]
+        two = src[i:i + 2]
+        if two == "--":
+            end = src.find("\n", i)
+            end = n if end < 0 else end
+            if end > i and src[end - 1] == "\r":
+                end -= 1
+            touched.add(newlines)
+            i = end
+        elif two == "/*":
+            depth = 1
+            j = i + 2
+            while j < n and depth:
+                if src[j:j + 2] == "/*":
+                    depth += 1
+                    j += 2
+                elif src[j:j + 2] == "*/":
+                    depth -= 1
+                    j += 2
+                else:
+                    j += 1
+            touched.add(newlines)
+            i = j
+        elif c == "'" or c == '"':
+            estring = c == "'" and i > 0 and src[i - 1] in "eE" and (i < 2 or not (src[i - 2].isalnum() or src[i - 2] == "_"))
+            j = i + 1
+            while j < n:
+                if estring and src[j] == "\\":
+                    j += 2
+                    continue
+                if src[j] == c:
+                    if src[j + 1:j + 2] == c:
+                        j += 2
+                        continue
+                    break
+                j += 1
+            emit(src[i:j + 1])
+            i = j + 1
+        elif c == "$" and (i == 0 or not (src[i - 1].isalnum() or src[i - 1] == "_")) and _DOLLAR.match(src, i):
+            tag = _DOLLAR.match(src, i).group(0)
+            end = src.find(tag, i + len(tag))
+            if end < 0:
+                emit(src[i:])
+                i = n
+            else:
+                emit(tag + strip_sql(src[i + len(tag):end]) + tag)
+                i = end + len(tag)
+        else:
+            emit(c)
+            i += 1
+    return _tidy("".join(out), touched)
+
+
+def strip_bat(src):
+    out = []
+    for line in io.StringIO(src).readlines():
+        probe = line.strip().lower()
+        if probe == "rem" or probe.startswith("rem ") or probe.startswith("::"):
+            continue
+        out.append(line)
+    return "".join(out)
+
+
 def strip_text(path, src):
     suffix = PurePath(path).suffix.lower()
     if suffix == ".py":
         return strip_python(src)
-    if suffix == ".js":
+    if suffix in (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"):
         return strip_c_like(src, line_comments=True, regex=True)
+    if suffix == ".rules":
+        return strip_c_like(src, line_comments=True)
+    if suffix == ".sql":
+        return strip_sql(src)
+    if suffix == ".toml":
+        return strip_hash(src, kind="toml")
+    if suffix in (".sh", ".bash"):
+        return strip_hash(src, kind="sh")
+    if suffix in (".bat", ".cmd"):
+        return strip_bat(src)
     if suffix == ".css":
         return strip_c_like(src, line_comments=False)
     if suffix == ".scss":
@@ -381,7 +502,10 @@ def find_text(path, src):
     return found
 
 
-SUFFIXES = {".py", ".js", ".css", ".scss", ".html", ".htm", ".xml", ".yml", ".yaml", ".ps1"}
+SUFFIXES = {
+    ".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".css", ".scss", ".html", ".htm", ".xml",
+    ".yml", ".yaml", ".ps1", ".sql", ".toml", ".sh", ".bash", ".bat", ".cmd", ".rules",
+}
 EXCLUDED_DIRS = {".git", "_site", ".sass-cache", "wp-content", "wp-includes", "node_modules"}
 EXCLUDED_ENDINGS = (".min.js", ".min.css", "~", ".scssc")
 
