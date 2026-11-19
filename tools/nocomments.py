@@ -629,7 +629,8 @@ def staged_files(root):
 
 def staged_text(root, name):
     result = subprocess.run(["git", "show", f":{name}"], cwd=root, check=True, capture_output=True)
-    return result.stdout.decode("utf-8")
+    raw = result.stdout
+    return raw.decode("utf-16" if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else "utf-8")
 
 
 def main(argv):
@@ -662,11 +663,14 @@ def main(argv):
             continue
         path = root / name
         try:
+            encoding = "utf-8"
             if staged:
                 text = staged_text(root, name)
             else:
-                with open(path, encoding="utf-8", newline="") as handle:
-                    text = handle.read()
+                raw = path.read_bytes()
+                if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+                    encoding = "utf-16"
+                text = raw.decode(encoding)
             if command == "check":
                 for line in find_text(name, text):
                     print(f"{name}:{line}")
@@ -674,8 +678,7 @@ def main(argv):
             else:
                 new = strip_text(name, text)
                 if new != text:
-                    with open(path, "w", encoding="utf-8", newline="") as handle:
-                        handle.write(new)
+                    path.write_bytes(new.encode(encoding))
         except (OSError, UnicodeDecodeError, ValueError, SyntaxError, tokenize.TokenError, subprocess.CalledProcessError) as exc:
             print(f"{name}: {exc}")
             errors += 1

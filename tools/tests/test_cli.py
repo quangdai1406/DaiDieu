@@ -166,3 +166,15 @@ def test_nocommentsignore_file(repo, capsys):
     assert "kept.py:1" in out
     for skipped in ("legacy", "b.gen.py", "exact.py"):
         assert skipped not in out
+
+
+def test_utf16_file_round_trip(repo):
+    text = '<?xml version="1.0" encoding="UTF-16"?>\r\n<a><!-- c --><b/></a>\r\n'
+    path = repo / "task.xml"
+    path.write_bytes(text.encode("utf-16"))
+    git(repo, "add", "-A")
+    assert main(["strip", "--root", str(repo)]) == 0
+    raw = path.read_bytes()
+    assert raw[:2] in (b"\xff\xfe", b"\xfe\xff")
+    assert raw.decode("utf-16") == '<?xml version="1.0" encoding="UTF-16"?>\r\n<a><b/></a>\r\n'
+    assert main(["check", "--root", str(repo)]) == 0
