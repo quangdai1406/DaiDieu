@@ -2,8 +2,10 @@ import ast
 import difflib
 import io
 import re
+import subprocess
+import sys
 import tokenize
-from pathlib import PurePath
+from pathlib import Path, PurePath
 
 _ENCODING = re.compile(r"^[ \t\f]*#.*?coding[:=][ \t]*[-\w.]+")
 
@@ -302,3 +304,70 @@ def find_text(path, src):
         if tag != "equal":
             found.extend(range(i1 + 1, i2 + 1))
     return found
+
+
+SUFFIXES = {".py", ".js", ".css", ".scss", ".html", ".htm", ".xml", ".yml", ".yaml", ".ps1"}
+EXCLUDED_DIRS = {".git", "_site", ".sass-cache", "wp-content", "wp-includes", "node_modules"}
+EXCLUDED_ENDINGS = (".min.js", ".min.css", "~", ".scssc")
+
+
+def is_target(rel):
+    path = PurePath(rel)
+    if EXCLUDED_DIRS.intersection(path.parts[:-1]):
+        return False
+    if path.name.endswith(EXCLUDED_ENDINGS):
+        return False
+    return path.suffix.lower() in SUFFIXES
+
+
+def tracked_files(root):
+    result = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=root, check=True, capture_output=True, text=True
+    )
+    return [name for name in result.stdout.split("\0") if name]
+
+
+def main(argv):
+    args = list(argv)
+    if not args or args[0] not in ("check", "strip"):
+        print("usage: nocomments.py check|strip [--root DIR] [paths...]")
+        return 2
+    command = args.pop(0)
+    root = Path.cwd()
+    paths = []
+    while args:
+        item = args.pop(0)
+        if item == "--root":
+            root = Path(args.pop(0))
+        else:
+            paths.append(item)
+    root = root.resolve()
+    names = paths or tracked_files(root)
+    found = 0
+    errors = 0
+    for name in sorted(names):
+        if not is_target(name):
+            continue
+        path = root / name
+        try:
+            with open(path, encoding="utf-8", newline="") as handle:
+                text = handle.read()
+            if command == "check":
+                for line in find_text(name, text):
+                    print(f"{name}:{line}")
+                    found += 1
+            else:
+                new = strip_text(name, text)
+                if new != text:
+                    with open(path, "w", encoding="utf-8", newline="") as handle:
+                        handle.write(new)
+        except (OSError, UnicodeDecodeError, ValueError, SyntaxError, tokenize.TokenError) as exc:
+            print(f"{name}: {exc}")
+            errors += 1
+    if errors:
+        return 2
+    return 1 if found else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
