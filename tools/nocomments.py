@@ -94,6 +94,44 @@ def _tidy(text, touched):
     return "".join(out)
 
 
+def _skip_quoted(src, i):
+    quote = src[i]
+    j = i + 1
+    while j < len(src) and src[j] != quote:
+        if src[j] == "\\":
+            j += 1
+        elif src[j] == "\n":
+            return j
+        j += 1
+    return j + 1
+
+
+def _skip_template(src, i):
+    n = len(src)
+    j = i + 1
+    while j < n:
+        c = src[j]
+        if c == "\\":
+            j += 2
+        elif c == "`":
+            return j + 1
+        elif c == "$" and src[j + 1:j + 2] == "{":
+            j += 2
+            depth = 1
+            while j < n and depth:
+                d = src[j]
+                if d in "'\"":
+                    j = _skip_quoted(src, j)
+                elif d == "`":
+                    j = _skip_template(src, j)
+                else:
+                    depth += (d == "{") - (d == "}")
+                    j += 1
+        else:
+            j += 1
+    return n
+
+
 def strip_c_like(src, line_comments, regex=False):
     out = []
     touched = set()
@@ -126,12 +164,18 @@ def strip_c_like(src, line_comments, regex=False):
             touched.add(newlines)
             i = end
             continue
-        if c in "'\"" or (regex and c == "`"):
+        if regex and c == "`":
+            end = _skip_template(src, i)
+            emit(src[i:end])
+            i = end
+            prev, word = c, ""
+            continue
+        if c in "'\"":
             j = i + 1
             while j < n and src[j] != c:
                 if src[j] == "\\":
                     j += 1
-                elif src[j] == "\n" and c != "`":
+                elif src[j] == "\n":
                     j -= 1
                     break
                 j += 1

@@ -113,3 +113,8 @@ def test_html_cdata_and_attribute_untouched():
 def test_js_regex_after_if_paren():
     src = "if (a) /re\\//.test(b); // c\nvar x = (a) / 2; // d\n"
     assert strip_c_like(src, line_comments=True, regex=True) == "if (a) /re\\//.test(b);\nvar x = (a) / 2;\n"
+
+
+def test_js_nested_template_literal():
+    src = "var s = `a ${ `// x` } b`; // z\nf();\nvar t = `${ '`' + \"}\" } //y`; // w\n"
+    assert strip_c_like(src, line_comments=True, regex=True) == "var s = `a ${ `// x` } b`;\nf();\nvar t = `${ '`' + \"}\" } //y`;\n"
