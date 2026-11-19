@@ -95,3 +95,14 @@ def test_idempotent_new_languages():
     ]:
         once = strip_text(name, src)
         assert strip_text(name, once) == once
+
+
+def test_legal_comments_kept():
+    from nocomments import strip_c_like
+
+    src = "/*! banner */\n/** @license MIT */\n/* @preserve y */\n/* c */a(); // d\n"
+    assert strip_c_like(src, line_comments=True, regex=True) == "/*! banner */\n/** @license MIT */\n/* @preserve y */\na();\n"
+
+
+def test_legal_comments_not_reported():
+    assert find_text("a.js", "/*! banner */\nvar a;\n") == []

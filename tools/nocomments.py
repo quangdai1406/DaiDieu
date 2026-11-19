@@ -1,5 +1,6 @@
 import ast
 import difflib
+import fnmatch
 import io
 import re
 import subprocess
@@ -10,7 +11,7 @@ from pathlib import Path, PurePath
 _ENCODING = re.compile(r"^[ \t\f]*#.*?coding[:=][ \t]*[-\w.]+")
 
 
-def _python_targets(src):
+def _python_info(src):
     lines = io.StringIO(src).readlines()
     cuts = {}
     for tok in tokenize.generate_tokens(io.StringIO(src).readline):
@@ -22,13 +23,22 @@ def _python_targets(src):
         if row <= 2 and _ENCODING.match(lines[row - 1]):
             continue
         cuts[row] = col
+    tree = ast.parse(src)
     docs = []
-    uses_doc = False
-    for node in ast.walk(ast.parse(src)):
-        if (isinstance(node, ast.Name) and node.id == "__doc__") or (
-            isinstance(node, ast.Attribute) and node.attr == "__doc__"
-        ):
-            uses_doc = True
+    doc_names = []
+    unsafe = False
+    used = set()
+    futures_end = 0
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            used.add(node.id)
+            if node.id == "__doc__":
+                if isinstance(node.ctx, ast.Load):
+                    doc_names.append((node.lineno, node.col_offset))
+                else:
+                    unsafe = True
+        elif isinstance(node, ast.Attribute) and node.attr == "__doc__":
+            unsafe = True
         if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             first = node.body[0] if node.body else None
             if (
@@ -36,42 +46,92 @@ def _python_targets(src):
                 and isinstance(first.value, ast.Constant)
                 and isinstance(first.value.value, str)
             ):
-                docs.append((first.lineno, first.end_lineno))
-    return lines, cuts, docs, uses_doc
+                docs.append(
+                    {
+                        "start": first.lineno,
+                        "end": first.end_lineno,
+                        "col": first.col_offset,
+                        "end_col": first.end_col_offset,
+                        "sole": len(node.body) == 1,
+                        "module": isinstance(node, ast.Module),
+                    }
+                )
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and node.module == "__future__":
+            futures_end = max(futures_end, node.end_lineno)
+    return lines, cuts, docs, doc_names, unsafe, used, futures_end
 
 
 def find_python(src):
-    _, cuts, docs, _ = _python_targets(src)
-    found = set(cuts) | {start for start, _ in docs}
-    return sorted(found)
+    _, cuts, docs, _, _, _, _ = _python_info(src)
+    return sorted(set(cuts) | {d["start"] for d in docs})
 
 
 def strip_python(src):
     try:
-        lines, cuts, docs, uses_doc = _python_targets(src)
+        lines, cuts, docs, doc_names, unsafe, used, futures_end = _python_info(src)
     except (SyntaxError, tokenize.TokenError) as exc:
         raise ValueError(f"cannot parse python: {exc}") from exc
-    if docs and uses_doc:
-        raise ValueError("code reads __doc__: move the text into a string constant first")
+    if docs and unsafe:
+        raise ValueError("code reads or writes __doc__ on an object: cannot move it safely")
+    module_doc = next((d for d in docs if d["module"]), None)
+    rename = bool(doc_names) and module_doc is not None
+    if rename and "DOC_TEXT" in used:
+        raise ValueError("DOC_TEXT already exists: cannot move the module docstring")
     dropped = set()
-    for start, end in docs:
-        dropped.update(range(start, end + 1))
+    replaced = {}
+    insert_after = {}
+    for d in docs:
+        first = lines[d["start"] - 1]
+        last = lines[d["end"] - 1]
+        tail = last.encode("utf-8")[d["end_col"]:].decode("utf-8")
+        if first[: d["col"]].strip() or tail.strip():
+            raise ValueError(f"docstring shares a line with code (line {d['start']}): rewrite it first")
+        span = range(d["start"], d["end"] + 1)
+        if d["module"] and rename:
+            text = "".join(lines[d["start"] - 1 : d["end"]])
+            if not text.endswith("\n"):
+                text += "\n"
+            if futures_end > d["end"]:
+                dropped.update(span)
+                insert_after[futures_end] = "DOC_TEXT = " + text
+            else:
+                replaced[d["start"]] = "DOC_TEXT = " + text
+                dropped.update(range(d["start"] + 1, d["end"] + 1))
+        elif d["sole"] and not d["module"]:
+            eol = last[len(last.rstrip("\r\n")):] or "\n"
+            replaced[d["start"]] = first[: d["col"]] + "pass" + eol
+            dropped.update(range(d["start"] + 1, d["end"] + 1))
+        else:
+            dropped.update(span)
+    renames = {}
+    if rename:
+        for row, col in doc_names:
+            renames.setdefault(row, []).append(col)
     out = []
     for number, line in enumerate(lines, start=1):
-        if number in dropped:
-            continue
-        if number in cuts:
-            body = line[: cuts[number]].rstrip()
-            if not body:
-                continue
-            eol = line[len(line.rstrip("\r\n")):]
-            line = body + eol
-        out.append(line)
+        if number in replaced:
+            out.append(replaced[number])
+        elif number not in dropped:
+            if number in cuts:
+                body = line[: cuts[number]].rstrip()
+                if not body:
+                    continue
+                eol = line[len(line.rstrip("\r\n")):]
+                line = body + eol
+            if number in renames:
+                raw = line.encode("utf-8")
+                for col in sorted(renames[number], reverse=True):
+                    raw = raw[:col] + b"DOC_TEXT" + raw[col + len(b"__doc__"):]
+                line = raw.decode("utf-8")
+            out.append(line)
+        if number in insert_after:
+            out.append(insert_after[number])
     result = "".join(out)
     try:
         ast.parse(result)
     except SyntaxError as exc:
-        raise ValueError(f"stripping left an empty block: {exc}") from exc
+        raise ValueError(f"stripping produced invalid python: {exc}") from exc
     return result
 
 
@@ -153,8 +213,15 @@ def strip_c_like(src, line_comments, regex=False):
         two = src[i:i + 2]
         if two == "/*":
             end = src.find("*/", i + 2)
+            stop = n if end < 0 else end + 2
+            text = src[i:stop]
+            if text.startswith("/*!") or "@license" in text or "@preserve" in text:
+                emit(text)
+                i = stop
+                prev, word = "x", ""
+                continue
             touched.add(newlines)
-            i = n if end < 0 else end + 2
+            i = stop
             continue
         if line_comments and two == "//":
             end = src.find("\n", i)
@@ -506,17 +573,40 @@ SUFFIXES = {
     ".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".css", ".scss", ".html", ".htm", ".xml",
     ".yml", ".yaml", ".ps1", ".sql", ".toml", ".sh", ".bash", ".bat", ".cmd", ".rules",
 }
-EXCLUDED_DIRS = {".git", "_site", ".sass-cache", "wp-content", "wp-includes", "node_modules"}
-EXCLUDED_ENDINGS = (".min.js", ".min.css", "~", ".scssc")
+EXCLUDED_DIRS = {
+    ".git", "_site", ".sass-cache", "wp-content", "wp-includes", "node_modules", "vendor",
+    "third_party", "bower_components", "dist", ".next", "coverage", ".venv", "venv", "__pycache__",
+}
+EXCLUDED_ENDINGS = (".min.js", ".min.css", ".umd.js", ".bundle.js", ".chunk.js", "~", ".scssc")
 
 
-def is_target(rel):
+def _ignored(rel, ignores):
+    name = PurePath(rel).name
+    for pattern in ignores:
+        if pattern.endswith("/"):
+            if rel.startswith(pattern) or "/" + pattern in "/" + rel:
+                return True
+        elif fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(name, pattern):
+            return True
+    return False
+
+
+def is_target(rel, ignores=()):
     path = PurePath(rel)
     if EXCLUDED_DIRS.intersection(path.parts[:-1]):
         return False
     if path.name.endswith(EXCLUDED_ENDINGS):
         return False
+    if _ignored(rel, ignores):
+        return False
     return path.suffix.lower() in SUFFIXES
+
+
+def load_ignores(root):
+    path = Path(root) / ".nocommentsignore"
+    if not path.is_file():
+        return []
+    return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 def tracked_files(root):
@@ -563,11 +653,12 @@ def main(argv):
     if staged and command != "check":
         print("--staged works with check only")
         return 2
+    ignores = load_ignores(root)
     names = paths or (staged_files(root) if staged else tracked_files(root))
     found = 0
     errors = 0
     for name in sorted(names):
-        if not is_target(name):
+        if not is_target(name, ignores):
             continue
         path = root / name
         try:

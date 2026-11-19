@@ -134,3 +134,35 @@ def test_hook_blocks_commit_with_comment(repo):
     git(repo, "add", "a.py")
     ok = subprocess.run(["git", "commit", "-qm", "good"], cwd=repo, capture_output=True, text=True)
     assert ok.returncode == 0
+
+
+def test_default_vendored_patterns_skipped(repo):
+    add(
+        repo,
+        {
+            "lib/marked.umd.js": "// c\n",
+            "lib/app.bundle.js": "// c\n",
+            "vendor/x.js": "// c\n",
+            "dist/y.js": "// c\n",
+            "src/app.js": "var a;\n",
+        },
+    )
+    assert main(["check", "--root", str(repo)]) == 0
+
+
+def test_nocommentsignore_file(repo, capsys):
+    add(
+        repo,
+        {
+            ".nocommentsignore": "legacy/\n*.gen.py\nexact.py\n",
+            "legacy/a.py": "x = 1  # c\n",
+            "b.gen.py": "x = 1  # c\n",
+            "exact.py": "x = 1  # c\n",
+            "kept.py": "x = 1  # c\n",
+        },
+    )
+    assert main(["check", "--root", str(repo)]) == 1
+    out = capsys.readouterr().out
+    assert "kept.py:1" in out
+    for skipped in ("legacy", "b.gen.py", "exact.py"):
+        assert skipped not in out

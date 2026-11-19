@@ -65,11 +65,45 @@ def test_idempotent():
     assert strip_python(once) == once
 
 
-def test_doc_reference_raises():
+def test_module_doc_reader_moved_to_constant():
+    src = '"""usage text"""\nimport argparse\nargparse.ArgumentParser(description=__doc__)\n'
+    assert strip_python(src) == 'DOC_TEXT = """usage text"""\nimport argparse\nargparse.ArgumentParser(description=DOC_TEXT)\n'
+
+
+def test_module_doc_reader_after_future_import():
+    src = '"""u"""\nfrom __future__ import annotations\nprint(__doc__)\n'
+    assert strip_python(src) == 'from __future__ import annotations\nDOC_TEXT = """u"""\nprint(DOC_TEXT)\n'
+
+
+def test_module_doc_reader_multiline_and_function_scope():
+    src = '#!/usr/bin/env python3\n"""line one\n\nline two"""\n\n\ndef f():\n    return __doc__\n'
+    assert strip_python(src) == '#!/usr/bin/env python3\nDOC_TEXT = """line one\n\nline two"""\n\n\ndef f():\n    return DOC_TEXT\n'
+
+
+def test_attribute_doc_reader_raises():
     with pytest.raises(ValueError):
-        strip_python('"""usage"""\nimport argparse\nargparse.ArgumentParser(description=__doc__)\n')
+        strip_python('def f():\n    """d"""\n\n\nprint(f.__doc__)\n')
 
 
-def test_doc_reference_without_docstring_allowed():
+def test_doc_reader_without_docstring_allowed():
     src = "x = __doc__\n"
     assert strip_python(src) == src
+
+
+def test_doc_text_name_clash_raises():
+    with pytest.raises(ValueError):
+        strip_python('"""u"""\nDOC_TEXT = 1\nprint(__doc__)\n')
+
+
+def test_docstring_only_bodies_become_pass():
+    src = 'class E(Exception):\n    """doc"""\n\n\ndef f():\n    """d"""\n\n\nx = 1\n'
+    assert strip_python(src) == "class E(Exception):\n    pass\n\n\ndef f():\n    pass\n\n\nx = 1\n"
+
+
+def test_docstring_only_module_becomes_empty():
+    assert strip_python('"""only"""\n') == ""
+
+
+def test_inline_docstring_raises():
+    with pytest.raises(ValueError):
+        strip_python('def f(): """d"""\n')
