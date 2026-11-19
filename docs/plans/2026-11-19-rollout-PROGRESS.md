@@ -30,3 +30,5 @@
 - Not run: full test suites for daikon, vision-station, aisi_mes, inspect-pro (deps), photo2step (cut off at 280s, identical progress), no site builds. User asked to go faster, so skipped.
 - Needs review: AISI_MES edits already-applied SQL migrations (comment lines only). GitHub Pages repos (EME121_Spring2016, quangdai1406.github.io) publish on merge.
 - Template repo skipped (needs user OK).
+- CI failures found after the first push (photo2step ruff and daikon ruff): my first pass removed noqa directives, put DOC_TEXT before imports, left blank-line drift, and the copied tool was linted. Fixed: directives kept, DOC_TEXT after imports, blank lines tidied, tool marked with ruff and fmt directives, photo2step docs index regenerated. Fix commits pushed to all 13 PR branches and DaiDieu PR 18.
+- Lesson: compare each repo's own CI commands (ruff, ruff format, build_index --check, mypy, tsc) on base versus new before pushing, not only AST equality.
