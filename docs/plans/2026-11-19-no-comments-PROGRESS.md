@@ -1,8 +1,8 @@
 # PROGRESS: no-comments (plan: 2026-11-19-no-comments.md)
 
 - [x] Task 1 Python stripper | done | 2026-11-19
-- [ ] Task 2 Web/other stripper | doing | 2026-11-19
-- [ ] Task 3 CLI strip/check | todo | 2026-11-19
+- [x] Task 2 Web/other stripper | done | 2026-11-19
+- [ ] Task 3 CLI strip/check | doing | 2026-11-19
 - [ ] Task 4 Apply to this repo | todo | 2026-11-19
 - [ ] Task 5 Enforcement (hook, CI, CLAUDE.md) | todo | 2026-11-19
 - [ ] Task 6 Other repos + future repos | todo | 2026-11-19
