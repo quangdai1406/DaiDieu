@@ -162,3 +162,29 @@ def test_doc_reader_after_first_import_run():
 
 def test_doc_text_with_no_imports_stays_in_place():
     assert strip_python('"""u"""\nprint(__doc__)\n') == 'DOC_TEXT = """u"""\nprint(DOC_TEXT)\n'
+
+
+def test_leading_blank_after_module_docstring_removed():
+    assert strip_python('"""d"""\n\nimport os\n') == "import os\n"
+
+
+def test_blank_runs_not_doubled_at_top_level():
+    src = "def a():\n    pass\n\n\n# c\n\n\ndef b():\n    pass\n"
+    assert strip_python(src) == "def a():\n    pass\n\n\ndef b():\n    pass\n"
+
+
+def test_blank_runs_not_doubled_in_function():
+    src = "def f():\n    x = 1\n\n    # c\n\n    y = 2\n"
+    assert strip_python(src) == "def f():\n    x = 1\n\n    y = 2\n"
+
+
+def test_blank_after_class_docstring_removed():
+    assert strip_python('class A:\n    """d"""\n\n    x = 1\n') == "class A:\n    x = 1\n"
+
+
+def test_trailing_comment_at_end_of_file():
+    assert strip_python("x = 1\n\n# end\n") == "x = 1\n"
+
+
+def test_comment_without_blank_neighbours_leaves_no_gap():
+    assert strip_python("x = 1\n# c\ndef f():\n    pass\n") == "x = 1\ndef f():\n    pass\n"
