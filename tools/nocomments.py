@@ -330,6 +330,22 @@ def tracked_files(root):
     return [name for name in result.stdout.split("\0") if name]
 
 
+def staged_files(root):
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return [name for name in result.stdout.split("\0") if name]
+
+
+def staged_text(root, name):
+    result = subprocess.run(["git", "show", f":{name}"], cwd=root, check=True, capture_output=True)
+    return result.stdout.decode("utf-8")
+
+
 def main(argv):
     args = list(argv)
     if not args or args[0] not in ("check", "strip"):
@@ -338,14 +354,20 @@ def main(argv):
     command = args.pop(0)
     root = Path.cwd()
     paths = []
+    staged = False
     while args:
         item = args.pop(0)
         if item == "--root":
             root = Path(args.pop(0))
+        elif item == "--staged":
+            staged = True
         else:
             paths.append(item)
     root = root.resolve()
-    names = paths or tracked_files(root)
+    if staged and command != "check":
+        print("--staged works with check only")
+        return 2
+    names = paths or (staged_files(root) if staged else tracked_files(root))
     found = 0
     errors = 0
     for name in sorted(names):
@@ -353,8 +375,11 @@ def main(argv):
             continue
         path = root / name
         try:
-            with open(path, encoding="utf-8", newline="") as handle:
-                text = handle.read()
+            if staged:
+                text = staged_text(root, name)
+            else:
+                with open(path, encoding="utf-8", newline="") as handle:
+                    text = handle.read()
             if command == "check":
                 for line in find_text(name, text):
                     print(f"{name}:{line}")
@@ -364,7 +389,7 @@ def main(argv):
                 if new != text:
                     with open(path, "w", encoding="utf-8", newline="") as handle:
                         handle.write(new)
-        except (OSError, UnicodeDecodeError, ValueError, SyntaxError, tokenize.TokenError) as exc:
+        except (OSError, UnicodeDecodeError, ValueError, SyntaxError, tokenize.TokenError, subprocess.CalledProcessError) as exc:
             print(f"{name}: {exc}")
             errors += 1
     if errors:

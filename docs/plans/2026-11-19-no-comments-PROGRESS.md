@@ -4,8 +4,8 @@
 - [x] Task 2 Web/other stripper | done | 2026-11-19
 - [x] Task 3 CLI strip/check | done | 2026-11-19
 - [x] Task 4 Apply to this repo | done | 2026-11-19
-- [ ] Task 5 Enforcement (hook, CI, CLAUDE.md) | doing | 2026-11-19
-- [ ] Task 6 Other repos + future repos | todo | 2026-11-19
+- [x] Task 5 Enforcement (hook, CI, CLAUDE.md) | done | 2026-11-19
+- [ ] Task 6 Other repos + future repos | doing | 2026-11-19
 
 ## Notes
 - Assumption: docstrings and tooling directives count as comments and are removed.

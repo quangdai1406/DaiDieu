@@ -1,4 +1,6 @@
+import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -87,3 +89,48 @@ def test_explicit_paths_only(repo, capsys):
 def test_binary_and_unknown_suffix_ignored(repo):
     add(repo, {"img.jpg": "# not text\n", "data.txt": "# keep\n"})
     assert main(["check", "--root", str(repo)]) == 0
+
+
+def test_staged_checks_index_not_worktree(repo, capsys):
+    add(repo, {"a.py": "x = 1\n"})
+    git(repo, "commit", "-qm", "init")
+    (repo / "a.py").write_text("x = 1  # c\n")
+    git(repo, "add", "a.py")
+    (repo / "a.py").write_text("x = 1\n")
+    assert main(["check", "--staged", "--root", str(repo)]) == 1
+    assert "a.py:1" in capsys.readouterr().out
+    git(repo, "add", "a.py")
+    (repo / "a.py").write_text("x = 1  # dirty worktree only\n")
+    assert main(["check", "--staged", "--root", str(repo)]) == 0
+
+
+def test_staged_ignores_deleted_files(repo):
+    add(repo, {"a.py": "x = 1  # c\n"})
+    git(repo, "commit", "-qm", "init")
+    git(repo, "rm", "-q", "a.py")
+    assert main(["check", "--staged", "--root", str(repo)]) == 0
+
+
+def install_hook(repo):
+    root = Path(__file__).resolve().parents[2]
+    (repo / "tools").mkdir()
+    shutil.copy(root / "tools" / "nocomments.py", repo / "tools" / "nocomments.py")
+    hooks = repo / ".githooks"
+    hooks.mkdir()
+    hook = hooks / "pre-commit"
+    shutil.copy(root / ".githooks" / "pre-commit", hook)
+    hook.chmod(0o755)
+    git(repo, "config", "core.hooksPath", ".githooks")
+
+
+def test_hook_blocks_commit_with_comment(repo):
+    install_hook(repo)
+    (repo / "a.py").write_text("x = 1  # c\n")
+    git(repo, "add", "a.py")
+    blocked = subprocess.run(["git", "commit", "-qm", "bad"], cwd=repo, capture_output=True, text=True)
+    assert blocked.returncode != 0
+    assert "a.py:1" in blocked.stdout + blocked.stderr
+    (repo / "a.py").write_text("x = 1\n")
+    git(repo, "add", "a.py")
+    ok = subprocess.run(["git", "commit", "-qm", "good"], cwd=repo, capture_output=True, text=True)
+    assert ok.returncode == 0
