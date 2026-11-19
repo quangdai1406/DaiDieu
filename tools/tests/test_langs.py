@@ -106,3 +106,32 @@ def test_legal_comments_kept():
 
 def test_legal_comments_not_reported():
     assert find_text("a.js", "/*! banner */\nvar a;\n") == []
+
+
+def test_js_tooling_directives_kept():
+    src = (
+        "// @ts-ignore\n"
+        "const a = 1; // prose\n"
+        "/* eslint-disable no-console */\n"
+        "const b = 2; // eslint-disable-line no-undef\n"
+        "// prettier-ignore\n"
+        "/// <reference types=\"node\" />\n"
+        "/* istanbul ignore next */\n"
+        "// @ts-expect-error reason\n"
+        "// plain\n"
+    )
+    assert strip_text("a.ts", src) == (
+        "// @ts-ignore\n"
+        "const a = 1;\n"
+        "/* eslint-disable no-console */\n"
+        "const b = 2; // eslint-disable-line no-undef\n"
+        "// prettier-ignore\n"
+        "/// <reference types=\"node\" />\n"
+        "/* istanbul ignore next */\n"
+        "// @ts-expect-error reason\n"
+    )
+
+
+def test_shell_and_yaml_directives_kept():
+    assert strip_text("a.sh", "# shellcheck disable=SC2086\necho $x # c\n") == "# shellcheck disable=SC2086\necho $x\n"
+    assert strip_text("a.yml", "# yamllint disable-line\na: 1 # c\n") == "# yamllint disable-line\na: 1\n"

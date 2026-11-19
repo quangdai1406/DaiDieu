@@ -9,6 +9,14 @@ import tokenize
 from pathlib import Path, PurePath
 
 _ENCODING = re.compile(r"^[ \t\f]*#.*?coding[:=][ \t]*[-\w.]+")
+_DIRECTIVE_PY = re.compile(
+    r"#\s*(noqa|type:|pragma:|nosec|pylint:|pyright:|mypy:|fmt:|isort:|ruff:|flake8:|yapf:|pytype:|coverage:|nocover|skip-file)",
+    re.I,
+)
+_DIRECTIVE_JS = re.compile(
+    r"(//|/\*)\s*(@ts-|eslint|prettier|biome|istanbul|c8\b|v8 ignore|tslint|jshint|jscs|globals?\b|webpack|#__PURE__|@__PURE__|@vite-ignore)"
+)
+_DIRECTIVE_HASH = re.compile(r"#\s*(shellcheck|yamllint|noqa|nosec|pragma|fmt:|prettier-ignore|hadolint|tflint|checkov|trivy|cspell)", re.I)
 
 
 def _python_info(src):
@@ -21,6 +29,8 @@ def _python_info(src):
         if row == 1 and tok.string.startswith("#!"):
             continue
         if row <= 2 and _ENCODING.match(lines[row - 1]):
+            continue
+        if _DIRECTIVE_PY.match(tok.string):
             continue
         cuts[row] = col
     tree = ast.parse(src)
@@ -56,20 +66,29 @@ def _python_info(src):
                         "module": isinstance(node, ast.Module),
                     }
                 )
+    imports_end = 0
+    body = tree.body
+    if body and isinstance(body[0], ast.Expr) and isinstance(getattr(body[0].value, "value", None), str):
+        body = body[1:]
+    for node in body:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            imports_end = node.end_lineno
+        else:
+            break
     for node in tree.body:
         if isinstance(node, ast.ImportFrom) and node.module == "__future__":
             futures_end = max(futures_end, node.end_lineno)
-    return lines, cuts, docs, doc_names, unsafe, used, futures_end
+    return lines, cuts, docs, doc_names, unsafe, used, futures_end, imports_end
 
 
 def find_python(src):
-    _, cuts, docs, _, _, _, _ = _python_info(src)
+    _, cuts, docs, _, _, _, _, _ = _python_info(src)
     return sorted(set(cuts) | {d["start"] for d in docs})
 
 
 def strip_python(src):
     try:
-        lines, cuts, docs, doc_names, unsafe, used, futures_end = _python_info(src)
+        lines, cuts, docs, doc_names, unsafe, used, futures_end, imports_end = _python_info(src)
     except (SyntaxError, tokenize.TokenError) as exc:
         raise ValueError(f"cannot parse python: {exc}") from exc
     if docs and unsafe:
@@ -92,9 +111,12 @@ def strip_python(src):
             text = "".join(lines[d["start"] - 1 : d["end"]])
             if not text.endswith("\n"):
                 text += "\n"
-            if futures_end > d["end"]:
+            if imports_end > d["end"]:
+                if any(row <= imports_end for row, _ in doc_names):
+                    raise ValueError("__doc__ is read inside the import block")
                 dropped.update(span)
-                insert_after[futures_end] = "DOC_TEXT = " + text
+                gap = "\n" if imports_end < len(lines) and lines[imports_end].strip() else ""
+                insert_after[imports_end] = "\nDOC_TEXT = " + text + gap
             else:
                 replaced[d["start"]] = "DOC_TEXT = " + text
                 dropped.update(range(d["start"] + 1, d["end"] + 1))
@@ -215,7 +237,7 @@ def strip_c_like(src, line_comments, regex=False):
             end = src.find("*/", i + 2)
             stop = n if end < 0 else end + 2
             text = src[i:stop]
-            if text.startswith("/*!") or "@license" in text or "@preserve" in text:
+            if text.startswith("/*!") or "@license" in text or "@preserve" in text or _DIRECTIVE_JS.match(text):
                 emit(text)
                 i = stop
                 prev, word = "x", ""
@@ -228,6 +250,11 @@ def strip_c_like(src, line_comments, regex=False):
             end = n if end < 0 else end
             if end > i and src[end - 1] == "\r":
                 end -= 1
+            text = src[i:end]
+            if _DIRECTIVE_JS.match(text) or text.startswith("/// <"):
+                emit(text)
+                i = end
+                continue
             touched.add(newlines)
             i = end
             continue
@@ -426,6 +453,8 @@ def strip_hash(src, kind="yaml"):
                 continue
             elif c == "#":
                 if number == 1 and body.startswith("#!"):
+                    break
+                if _DIRECTIVE_HASH.match(body[j:]):
                     break
                 if kind == "yaml" and j > 0 and body[j - 1] not in " \t":
                     j += 1
