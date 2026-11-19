@@ -1,4 +1,3 @@
-
 import numpy as np
 
 
@@ -10,7 +9,6 @@ def to_mono(samples):
 
 
 class LinearResampler:
-
     def __init__(self, in_rate, out_rate):
         if in_rate <= 0 or out_rate <= 0:
             raise ValueError("sample rates must be positive")

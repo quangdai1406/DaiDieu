@@ -1,4 +1,3 @@
-
 import queue
 import shutil
 import threading
@@ -48,7 +47,6 @@ class Snapshot:
 
 
 class ThreadRunner:
-
     def __init__(self):
         self._finished = queue.Queue()
 
@@ -100,7 +98,6 @@ class AppController:
         self._progress_started = 0.0
         self._message, self._kind = "Ready. Press Record to start.", "info"
 
-
     def snapshot(self):
         recording = self._state is State.RECORDING
         peaks = self._session.peaks if (recording and self._session) else {}
@@ -145,7 +142,6 @@ class AppController:
 
     def _say(self, text, kind="info"):
         self._message, self._kind = text, kind
-
 
     def record(self):
         if self._state not in (State.IDLE, State.STOPPED):

@@ -315,8 +315,6 @@ def test_format_elapsed():
     assert format_elapsed(3725) == "1:02:05"
 
 
-
-
 def make_audio(tmp_path, name="Voice 261013_093023.m4a"):
     audio = tmp_path / name
     audio.write_bytes(b"")

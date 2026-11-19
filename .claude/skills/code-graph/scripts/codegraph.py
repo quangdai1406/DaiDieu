@@ -37,7 +37,6 @@ COMMON_NAMES = {
 TEST_DIRS = {"test", "tests", "__tests__", "spec", "specs"}
 
 
-
 def find_root(arg):
     if arg:
         return os.path.abspath(arg)
@@ -81,7 +80,6 @@ def is_test_path(rel):
         re.match(r"^test_.*\.py$", base) or re.match(r".*_test\.py$", base)
         or re.match(r".*\.(test|spec)\.[a-z]+$", base)
     )
-
 
 
 def find_py(files, parts):
@@ -178,7 +176,6 @@ def parse_python(rel, text, files):
     }
 
 
-
 JS_IMPORT_RES = [
     re.compile(r"""\bimport\s+(?:[\w*${}\s,]+?\s+from\s+)?['"]([^'"]+)['"]"""),
     re.compile(r"""\bexport\s+(?:\*|\{[^}]*\})\s*(?:as\s+\w+\s*)?from\s+['"]([^'"]+)['"]"""),
@@ -273,7 +270,6 @@ def parse_js(rel, text, files):
     return {"defs": uniq, "imports": sorted(imports), "external": sorted(external),
             "import_names": {k: sorted(v) for k, v in import_names.items()},
             "refs": set(JS_IDENT.findall(clean))}
-
 
 
 def build(root):
@@ -398,7 +394,6 @@ class G:
                     seen[nxt] = (d + 1, kind, (cur, e["names"]))
                     queue.append((nxt, d + 1, kind))
         return {k: v for k, v in seen.items() if k not in seeds}
-
 
 
 def fmt_hits(hits, files, limit):

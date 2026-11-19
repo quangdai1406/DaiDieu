@@ -1,4 +1,3 @@
-
 import queue
 import threading
 import time
@@ -34,7 +33,6 @@ class SessionResult:
 
 
 class RecordingSession:
-
     def __init__(self, out_dir, mic, loopback, mode="meeting", sample_rate=48000,
                  mic_gain=1.0, music_gain=1.0, keep_tracks=None, clock=time.monotonic):
         if mode not in MODES:
